@@ -27,10 +27,15 @@ export function folderDateFor(filePath: string, root: string): DateParts | null 
 	}
 }
 
-/** Audit a single file: compare its metadata date against name and folder. */
-export async function auditFile(exiftool: ExifTool, path: string, root: string): Promise<Finding> {
+/**
+ * Audit a single file: compare its metadata date against name and folder.
+ *
+ * `homeZone` is the IANA timezone used to resolve defaulted-UTC video dates
+ * into a calendar date (see {@link extractMetadataDate}).
+ */
+export async function auditFile(exiftool: ExifTool, path: string, root: string, homeZone: string): Promise<Finding> {
 	const tags = await exiftool.read(path);
-	const metadata = extractMetadataDate(tags);
+	const metadata = extractMetadataDate(tags, homeZone);
 	return classify({
 		path,
 		metadataDate: metadata?.date ?? null,

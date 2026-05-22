@@ -6,13 +6,16 @@ import {formatDate} from './dateParts.ts';
 import type {Finding} from './classify.ts';
 import {walkMedia} from './walk.ts';
 
-const USAGE = `Usage: npm run audit -- <directory> [--limit N] [--show-all]
+const USAGE = `Usage: npm run audit -- <directory> [--limit N] [--show-all] [--zone IANA] [--help]
 
 Audits every photo/video under <directory>, comparing the date in each file's
 metadata against the date in its filename and ancestor folders.
 
-  --limit N    stop after auditing N files (useful for a quick sample)
-  --show-all   also print MISSING_DATE and NO_METADATA_DATE findings
+  --limit N      stop after auditing N files (useful for a quick sample)
+  --show-all     also print MISSING_DATE and NO_METADATA_DATE findings
+  --zone IANA    timezone for resolving UTC-only video dates
+                 (default: this machine's timezone)
+  --help         print this message and exit
 `;
 
 function printWrongDate(finding: Extract<Finding, {kind: 'WRONG_DATE'}>, root: string): void {
@@ -29,8 +32,15 @@ async function main(): Promise<void> {
 		options: {
 			limit: {type: 'string'},
 			'show-all': {type: 'boolean', default: false},
+			zone: {type: 'string'},
+			help: {type: 'boolean', short: 'h', default: false},
 		},
 	});
+
+	if (values.help) {
+		console.log(USAGE);
+		return;
+	}
 
 	const target = positionals[0];
 	if (target === undefined) {
@@ -40,6 +50,7 @@ async function main(): Promise<void> {
 	}
 	const root = resolve(target);
 	const limit = values.limit === undefined ? Infinity : Number(values.limit);
+	const homeZone = values.zone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 	const counts: Record<Finding['kind'], number> = {
 		CONSISTENT: 0,
@@ -55,7 +66,7 @@ async function main(): Promise<void> {
 			if (scanned >= limit) {
 				break;
 			}
-			const finding = await auditFile(exiftool, path, root);
+			const finding = await auditFile(exiftool, path, root, homeZone);
 			counts[finding.kind] += 1;
 			scanned += 1;
 
@@ -75,6 +86,7 @@ async function main(): Promise<void> {
 
 	console.log(`\n${'='.repeat(48)}`);
 	console.log(`Scanned ${scanned} files under ${root}`);
+	console.log(`Home timezone for UTC-only video dates: ${homeZone}`);
 	console.log(`  WRONG_DATE       ${counts.WRONG_DATE}`);
 	console.log(`  MISSING_DATE     ${counts.MISSING_DATE}`);
 	console.log(`  NO_METADATA_DATE ${counts.NO_METADATA_DATE}`);
