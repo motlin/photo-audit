@@ -1,7 +1,7 @@
 import {formatDate, type DateParts} from './dateParts.ts';
 
 /** A date (and optional time) at the very start of a name, with trailing separators. */
-const LEADING_DATE = /^(?:\d{4}-\d{2}-\d{2}|\d{8})(?:[ _T-]+\d{2}[-:]?\d{2}[-:]?\d{2}|_\d{6})?[ _-]*/;
+const LEADING_DATE = /^(?:\d{4}-\d{2}-\d{2}|\d{8})(?:[ _T-]+\d{2}[-:.]?\d{2}[-:.]?\d{2}|_\d{6})?[ _-]*/;
 
 /**
  * Propose a filename that puts `date` at the front in `YYYY-MM-DD HHMMSS` form

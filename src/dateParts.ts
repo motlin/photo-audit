@@ -38,5 +38,5 @@ export function formatDate(date: DateParts): string {
 		return ymd;
 	}
 	const {hour, minute, second} = date.time;
-	return `${ymd} ${pad(hour)}${pad(minute)}${pad(second)}`;
+	return `${ymd} ${pad(hour)}.${pad(minute)}.${pad(second)}`;
 }
