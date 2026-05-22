@@ -1,14 +1,42 @@
-import { readdir } from "node:fs/promises";
-import { join } from "node:path";
+import {readdir} from 'node:fs/promises';
+import {join} from 'node:path';
 
 const MEDIA_EXTENSIONS = new Set([
-	"jpg", "jpeg", "png", "heic", "heif", "gif", "tiff", "tif", "bmp", "webp",
-	"dng", "cr2", "cr3", "nef", "arw", "orf", "raf", "rw2", "pef", "srw",
-	"mov", "mp4", "m4v", "avi", "mpg", "mpeg", "3gp", "3g2", "mts", "m2ts", "wmv",
+	'jpg',
+	'jpeg',
+	'png',
+	'heic',
+	'heif',
+	'gif',
+	'tiff',
+	'tif',
+	'bmp',
+	'webp',
+	'dng',
+	'cr2',
+	'cr3',
+	'nef',
+	'arw',
+	'orf',
+	'raf',
+	'rw2',
+	'pef',
+	'srw',
+	'mov',
+	'mp4',
+	'm4v',
+	'avi',
+	'mpg',
+	'mpeg',
+	'3gp',
+	'3g2',
+	'mts',
+	'm2ts',
+	'wmv',
 ]);
 
 export function isMediaFile(name: string): boolean {
-	const dot = name.lastIndexOf(".");
+	const dot = name.lastIndexOf('.');
 	if (dot < 0) {
 		return false;
 	}
@@ -24,12 +52,12 @@ export function isMediaFile(name: string): boolean {
 export async function* walkMedia(root: string): AsyncGenerator<string> {
 	let entries;
 	try {
-		entries = await readdir(root, { withFileTypes: true });
+		entries = await readdir(root, {withFileTypes: true});
 	} catch {
 		return;
 	}
 	for (const entry of entries) {
-		if (entry.name.startsWith(".")) {
+		if (entry.name.startsWith('.')) {
 			continue;
 		}
 		const full = join(root, entry.name);

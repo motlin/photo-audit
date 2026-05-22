@@ -1,10 +1,10 @@
-import { relative, resolve } from "node:path";
-import { parseArgs } from "node:util";
-import { ExifTool } from "exiftool-vendored";
-import { auditFile } from "./audit.ts";
-import { formatDate } from "./dateParts.ts";
-import type { Finding } from "./classify.ts";
-import { walkMedia } from "./walk.ts";
+import {relative, resolve} from 'node:path';
+import {parseArgs} from 'node:util';
+import {ExifTool} from 'exiftool-vendored';
+import {auditFile} from './audit.ts';
+import {formatDate} from './dateParts.ts';
+import type {Finding} from './classify.ts';
+import {walkMedia} from './walk.ts';
 
 const USAGE = `Usage: npm run audit -- <directory> [--limit N] [--show-all]
 
@@ -15,7 +15,7 @@ metadata against the date in its filename and ancestor folders.
   --show-all   also print MISSING_DATE and NO_METADATA_DATE findings
 `;
 
-function printWrongDate(finding: Extract<Finding, { kind: "WRONG_DATE" }>, root: string): void {
+function printWrongDate(finding: Extract<Finding, {kind: 'WRONG_DATE'}>, root: string): void {
 	console.log(`\nWRONG DATE  ${relative(root, finding.path)}`);
 	console.log(`  metadata : ${formatDate(finding.metadataDate)}`);
 	for (const conflict of finding.conflicts) {
@@ -24,11 +24,11 @@ function printWrongDate(finding: Extract<Finding, { kind: "WRONG_DATE" }>, root:
 }
 
 async function main(): Promise<void> {
-	const { values, positionals } = parseArgs({
+	const {values, positionals} = parseArgs({
 		allowPositionals: true,
 		options: {
-			limit: { type: "string" },
-			"show-all": { type: "boolean", default: false },
+			limit: {type: 'string'},
+			'show-all': {type: 'boolean', default: false},
 		},
 	});
 
@@ -41,7 +41,7 @@ async function main(): Promise<void> {
 	const root = resolve(target);
 	const limit = values.limit === undefined ? Infinity : Number(values.limit);
 
-	const counts: Record<Finding["kind"], number> = {
+	const counts: Record<Finding['kind'], number> = {
 		CONSISTENT: 0,
 		WRONG_DATE: 0,
 		MISSING_DATE: 0,
@@ -59,9 +59,9 @@ async function main(): Promise<void> {
 			counts[finding.kind] += 1;
 			scanned += 1;
 
-			if (finding.kind === "WRONG_DATE") {
+			if (finding.kind === 'WRONG_DATE') {
 				printWrongDate(finding, root);
-			} else if (values["show-all"] && finding.kind !== "CONSISTENT") {
+			} else if (values['show-all'] && finding.kind !== 'CONSISTENT') {
 				console.log(`${finding.kind}  ${relative(root, finding.path)}`);
 			}
 
@@ -73,7 +73,7 @@ async function main(): Promise<void> {
 		await exiftool.end();
 	}
 
-	console.log(`\n${"=".repeat(48)}`);
+	console.log(`\n${'='.repeat(48)}`);
 	console.log(`Scanned ${scanned} files under ${root}`);
 	console.log(`  WRONG_DATE       ${counts.WRONG_DATE}`);
 	console.log(`  MISSING_DATE     ${counts.MISSING_DATE}`);

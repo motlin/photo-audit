@@ -1,22 +1,31 @@
 {
-  "name": "photo-audit",
-  "version": "0.1.0",
-  "description": "Identify (and later fix) date problems in a photo/video library",
-  "type": "module",
-  "private": true,
-  "scripts": {
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "typecheck": "tsc --noEmit",
-    "audit": "tsx src/cli.ts"
-  },
-  "devDependencies": {
-    "@types/node": "^25.9.1",
-    "tsx": "^4.22.3",
-    "typescript": "^6.0.3",
-    "vitest": "^4.1.7"
-  },
-  "dependencies": {
-    "exiftool-vendored": "^35.20.0"
-  }
+	"name": "photo-audit",
+	"version": "0.1.0",
+	"private": true,
+	"description": "Identify (and later fix) date problems in a photo/video library",
+	"type": "module",
+	"scripts": {
+		"build": "tsgo --noEmit && vp build",
+		"oxlint": "vp lint . --fix",
+		"oxlint:ci": "vp lint . --format github",
+		"fmt": "vp fmt",
+		"fmt:ci": "vp fmt --check",
+		"typecheck": "tsgo --noEmit",
+		"test": "node node_modules/vitest/dist/cli.js",
+		"test:run": "node node_modules/vitest/dist/cli.js run",
+		"audit": "tsx src/cli.ts",
+		"prepare": "vp config"
+	},
+	"dependencies": {
+		"exiftool-vendored": "^35.20.0"
+	},
+	"devDependencies": {
+		"@types/node": "^25.9.1",
+		"@typescript/native-preview": "latest",
+		"tsx": "^4.22.3",
+		"vite": "catalog:",
+		"vite-plus": "catalog:",
+		"vitest": "catalog:"
+	},
+	"packageManager": "pnpm@11.1.3"
 }

@@ -1,4 +1,4 @@
-import { datesAgree, type DateParts } from "./dateParts.ts";
+import {datesAgree, type DateParts} from './dateParts.ts';
 
 export interface AuditInput {
 	path: string;
@@ -10,7 +10,7 @@ export interface AuditInput {
 	folderDate: DateParts | null;
 }
 
-export type DateSource = "filename" | "folder";
+export type DateSource = 'filename' | 'folder';
 
 export interface Conflict {
 	source: DateSource;
@@ -22,32 +22,32 @@ export interface Conflict {
  * filename and folder dates are the claims being checked against it.
  */
 export type Finding =
-	| { kind: "CONSISTENT"; path: string; metadataDate: DateParts }
-	| { kind: "WRONG_DATE"; path: string; metadataDate: DateParts; conflicts: Conflict[] }
-	| { kind: "MISSING_DATE"; path: string; metadataDate: DateParts }
-	| { kind: "NO_METADATA_DATE"; path: string };
+	| {kind: 'CONSISTENT'; path: string; metadataDate: DateParts}
+	| {kind: 'WRONG_DATE'; path: string; metadataDate: DateParts; conflicts: Conflict[]}
+	| {kind: 'MISSING_DATE'; path: string; metadataDate: DateParts}
+	| {kind: 'NO_METADATA_DATE'; path: string};
 
 export function classify(input: AuditInput): Finding {
-	const { path, metadataDate, filenameDate, folderDate } = input;
+	const {path, metadataDate, filenameDate, folderDate} = input;
 
 	if (metadataDate === null) {
-		return { kind: "NO_METADATA_DATE", path };
+		return {kind: 'NO_METADATA_DATE', path};
 	}
 
 	const claims: Conflict[] = [];
 	if (filenameDate !== null) {
-		claims.push({ source: "filename", found: filenameDate });
+		claims.push({source: 'filename', found: filenameDate});
 	}
 	if (folderDate !== null) {
-		claims.push({ source: "folder", found: folderDate });
+		claims.push({source: 'folder', found: folderDate});
 	}
 
 	const conflicts = claims.filter((claim) => !datesAgree(claim.found, metadataDate));
 	if (conflicts.length > 0) {
-		return { kind: "WRONG_DATE", path, metadataDate, conflicts };
+		return {kind: 'WRONG_DATE', path, metadataDate, conflicts};
 	}
 	if (claims.length === 0) {
-		return { kind: "MISSING_DATE", path, metadataDate };
+		return {kind: 'MISSING_DATE', path, metadataDate};
 	}
-	return { kind: "CONSISTENT", path, metadataDate };
+	return {kind: 'CONSISTENT', path, metadataDate};
 }

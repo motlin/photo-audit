@@ -1,4 +1,4 @@
-import type { DateParts } from "./dateParts.ts";
+import type {DateParts} from './dateParts.ts';
 
 const MIN_YEAR = 1990;
 const MAX_YEAR = 2099;
@@ -23,7 +23,7 @@ function isValid(date: DateParts): boolean {
 		return false;
 	}
 	if (date.time !== null) {
-		const { hour, minute, second } = date.time;
+		const {hour, minute, second} = date.time;
 		if (hour > 23 || minute > 59 || second > 59) {
 			return false;
 		}
@@ -35,16 +35,12 @@ function buildWithOptionalTime(match: RegExpMatchArray, day: number | null): Dat
 	const [, year, month, , hour, minute, second] = match;
 	const time =
 		hour !== undefined && minute !== undefined && second !== undefined
-			? { hour: Number(hour), minute: Number(minute), second: Number(second) }
+			? {hour: Number(hour), minute: Number(minute), second: Number(second)}
 			: null;
-	return { year: Number(year), month: Number(month), day, time };
+	return {year: Number(year), month: Number(month), day, time};
 }
 
-function firstValid(
-	input: string,
-	pattern: RegExp,
-	build: (match: RegExpMatchArray) => DateParts,
-): DateParts | null {
+function firstValid(input: string, pattern: RegExp, build: (match: RegExpMatchArray) => DateParts): DateParts | null {
 	for (const match of input.matchAll(pattern)) {
 		const date = build(match);
 		if (isValid(date)) {

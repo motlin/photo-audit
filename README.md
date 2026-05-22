@@ -7,19 +7,19 @@ library spread across multiple drives.
 
 Photos get filed into a `YYYY/YYYY-MM-DD Title` folder layout, but the date in a
 filename or folder is often **missing or simply wrong** — e.g. iMazing names
-exported files by *transfer* date, not capture date. File metadata (EXIF /
+exported files by _transfer_ date, not capture date. File metadata (EXIF /
 QuickTime) is the reliable source of truth. These tools compare the two.
 
 ## Status
 
 Scenario detection, report-only. No files are modified yet.
 
-| Scenario | Meaning |
-| --- | --- |
-| `WRONG_DATE` | filename or ancestor folder has a date that disagrees with metadata |
-| `MISSING_DATE` | metadata has a capture date, but the name/folder does not |
-| `NO_METADATA_DATE` | the file carries no usable capture date (scans, some screenshots) |
-| `CONSISTENT` | name/folder dates match metadata |
+| Scenario           | Meaning                                                             |
+| ------------------ | ------------------------------------------------------------------- |
+| `WRONG_DATE`       | filename or ancestor folder has a date that disagrees with metadata |
+| `MISSING_DATE`     | metadata has a capture date, but the name/folder does not           |
+| `NO_METADATA_DATE` | the file carries no usable capture date (scans, some screenshots)   |
+| `CONSISTENT`       | name/folder dates match metadata                                    |
 
 ## Usage
 

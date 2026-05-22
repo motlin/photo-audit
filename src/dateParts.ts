@@ -8,13 +8,13 @@ export interface DateParts {
 	year: number;
 	month: number;
 	day: number | null;
-	time: { hour: number; minute: number; second: number } | null;
+	time: {hour: number; minute: number; second: number} | null;
 }
 
-export type DatePrecision = "month" | "day";
+export type DatePrecision = 'month' | 'day';
 
 export function precisionOf(date: DateParts): DatePrecision {
-	return date.day === null ? "month" : "day";
+	return date.day === null ? 'month' : 'day';
 }
 
 /** Compare two dates at the coarsest precision they share. */
@@ -29,7 +29,7 @@ export function datesAgree(a: DateParts, b: DateParts): boolean {
 }
 
 export function formatDate(date: DateParts): string {
-	const pad = (n: number, width = 2) => String(n).padStart(width, "0");
+	const pad = (n: number, width = 2) => String(n).padStart(width, '0');
 	const ymd =
 		date.day === null
 			? `${pad(date.year, 4)}-${pad(date.month)}`
@@ -37,6 +37,6 @@ export function formatDate(date: DateParts): string {
 	if (date.time === null) {
 		return ymd;
 	}
-	const { hour, minute, second } = date.time;
+	const {hour, minute, second} = date.time;
 	return `${ymd} ${pad(hour)}${pad(minute)}${pad(second)}`;
 }

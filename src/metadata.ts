@@ -1,5 +1,5 @@
-import { ExifDate, ExifDateTime, type Tags } from "exiftool-vendored";
-import type { DateParts } from "./dateParts.ts";
+import {ExifDate, ExifDateTime, type Tags} from 'exiftool-vendored';
+import type {DateParts} from './dateParts.ts';
 
 /**
  * Metadata tags holding a capture date, in priority order.
@@ -9,21 +9,21 @@ import type { DateParts } from "./dateParts.ts";
  * can land a late-evening clip on the wrong calendar day.
  */
 const DATE_TAGS = [
-	"SubSecDateTimeOriginal",
-	"DateTimeOriginal",
-	"CreationDate",
-	"CreateDate",
-	"MediaCreateDate",
+	'SubSecDateTimeOriginal',
+	'DateTimeOriginal',
+	'CreationDate',
+	'CreateDate',
+	'MediaCreateDate',
 ] as const satisfies readonly (keyof Tags)[];
 
 function toDateParts(value: unknown): DateParts | null {
 	if (value instanceof ExifDateTime || value instanceof ExifDate) {
-		const { year, month, day } = value;
+		const {year, month, day} = value;
 		if (year == null || month == null || day == null) {
 			return null;
 		}
 		if (value instanceof ExifDate) {
-			return { year, month, day, time: null };
+			return {year, month, day, time: null};
 		}
 		return {
 			year,
@@ -50,7 +50,7 @@ export function extractMetadataDate(tags: Tags): MetadataDate | null {
 	for (const tag of DATE_TAGS) {
 		const date = toDateParts(tags[tag]);
 		if (date !== null) {
-			return { date, tag };
+			return {date, tag};
 		}
 	}
 	return null;
