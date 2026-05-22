@@ -1,12 +1,13 @@
-import {relative, resolve} from 'node:path';
+import {basename, relative, resolve} from 'node:path';
 import {parseArgs} from 'node:util';
 import {ExifTool} from 'exiftool-vendored';
 import {auditFile} from './audit.ts';
-import {formatDate} from './dateParts.ts';
 import type {Finding} from './classify.ts';
+import {formatDate} from './dateParts.ts';
+import {proposeFilename} from './proposeName.ts';
 import {walkMedia} from './walk.ts';
 
-const USAGE = `Usage: npm run audit -- <directory> [--limit N] [--show-all] [--zone IANA] [--help]
+const USAGE = `Usage: just audit "<directory>" [--limit N] [--show-all] [--zone IANA] [--help]
 
 Audits every photo/video under <directory>, comparing the date in each file's
 metadata against the date in its filename and ancestor folders.
@@ -19,11 +20,24 @@ metadata against the date in its filename and ancestor folders.
 `;
 
 function printWrongDate(finding: Extract<Finding, {kind: 'WRONG_DATE'}>, root: string): void {
+	const name = basename(finding.path);
 	console.log(`\nWRONG DATE  ${relative(root, finding.path)}`);
-	console.log(`  metadata : ${formatDate(finding.metadataDate)}`);
+	console.log(`  metadata  : ${formatDate(finding.metadataDate)}`);
 	for (const conflict of finding.conflicts) {
-		console.log(`  ${conflict.source.padEnd(9)}: ${formatDate(conflict.found)}  <- disagrees`);
+		console.log(`  ${conflict.source.padEnd(10)}: ${formatDate(conflict.found)}  <- disagrees`);
 	}
+	if (finding.conflicts.some((conflict) => conflict.source === 'filename')) {
+		console.log(`  rename to : ${proposeFilename(name, finding.metadataDate)}`);
+	}
+	if (finding.conflicts.some((conflict) => conflict.source === 'folder')) {
+		console.log(`  folder    : should be dated ${formatDate({...finding.metadataDate, time: null})}`);
+	}
+}
+
+function printMissingDate(finding: Extract<Finding, {kind: 'MISSING_DATE'}>, root: string): void {
+	console.log(`\nMISSING DATE  ${relative(root, finding.path)}`);
+	console.log(`  computed  : ${formatDate(finding.metadataDate)}`);
+	console.log(`  rename to : ${proposeFilename(basename(finding.path), finding.metadataDate)}`);
 }
 
 async function main(): Promise<void> {
@@ -72,8 +86,10 @@ async function main(): Promise<void> {
 
 			if (finding.kind === 'WRONG_DATE') {
 				printWrongDate(finding, root);
-			} else if (values['show-all'] && finding.kind !== 'CONSISTENT') {
-				console.log(`${finding.kind}  ${relative(root, finding.path)}`);
+			} else if (finding.kind === 'MISSING_DATE' && values['show-all']) {
+				printMissingDate(finding, root);
+			} else if (finding.kind === 'NO_METADATA_DATE' && values['show-all']) {
+				console.log(`\nNO METADATA DATE  ${relative(root, finding.path)}`);
 			}
 
 			if (scanned % 200 === 0) {
