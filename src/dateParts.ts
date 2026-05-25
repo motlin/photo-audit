@@ -16,10 +16,6 @@ export interface DateParts {
 
 export type DatePrecision = 'month' | 'day';
 
-export function precisionOf(date: DateParts): DatePrecision {
-	return date.day === null ? 'month' : 'day';
-}
-
 /** Compare two dates at the coarsest precision they share. */
 export function datesAgree(a: DateParts, b: DateParts): boolean {
 	if (a.year !== b.year || a.month !== b.month) {

@@ -35,7 +35,7 @@ const MEDIA_EXTENSIONS = new Set([
 	'wmv',
 ]);
 
-export function isMediaFile(name: string): boolean {
+function isMediaFile(name: string): boolean {
 	const dot = name.lastIndexOf('.');
 	if (dot < 0) {
 		return false;
