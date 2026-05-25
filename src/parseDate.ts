@@ -7,13 +7,13 @@ const MAX_YEAR = 2099;
  * ISO calendar date, optionally followed by a time (`153044`, `17-18-14`,
  * `17.18.14`, `17:18:14`) and optionally a `.SSS` sub-second suffix.
  */
-const ISO_DATE = /(?<!\d)(\d{4})-(\d{2})-(\d{2})(?:[ _T-]+(\d{2})[-:.]?(\d{2})[-:.]?(\d{2})(?:\.(\d{3}))?)?/g;
+const ISO_DATE = /(?<!\d)(\d{4})-(\d{2})-(\d{2})(?!\d)(?:[ _T-]+(\d{2})[-:.]?(\d{2})[-:.]?(\d{2})(?:\.(\d{3}))?)?/g;
 
 /** Compact `YYYYMMDD` run, optionally followed by `HHMMSS` (Android/camera naming). */
 const COMPACT = /(?<!\d)(\d{4})(\d{2})(\d{2})(?:[ _T.-]?(\d{2})(\d{2})(\d{2}))?(?!\d)/g;
 
-/** Month-precision `YYYY-MM` (e.g. a "2022-06 Nadia Shoot" folder). */
-const YEAR_MONTH = /(?<!\d)(\d{4})-(\d{2})(?!-?\d)/g;
+/** Month-precision `YYYY-MM` (e.g. a "2022-06 Nadia Shoot" folder, or `2008-05-019.jpg` where 019 is a serial index). */
+const YEAR_MONTH = /(?<!\d)(\d{4})-(\d{2})(?!-?\d{4})/g;
 
 function isValid(date: DateParts): boolean {
 	if (date.year < MIN_YEAR || date.year > MAX_YEAR) {

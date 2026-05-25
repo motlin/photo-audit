@@ -65,6 +65,21 @@ describe('parseDateFromString', () => {
 		});
 	});
 
+	it('parses YYYY-MM-NNN export filenames as month-precision (NNN is a serial index, not a day)', () => {
+		expect(parseDateFromString('2008-05-019.jpg')).toEqual({
+			year: 2008,
+			month: 5,
+			day: null,
+			time: null,
+		});
+		expect(parseDateFromString('2008-10-013.jpg')).toEqual({
+			year: 2008,
+			month: 10,
+			day: null,
+			time: null,
+		});
+	});
+
 	it('returns null when there is no date', () => {
 		expect(parseDateFromString('IMG_4309.jpg')).toBeNull();
 		expect(parseDateFromString('P1320671.jpg')).toBeNull();
