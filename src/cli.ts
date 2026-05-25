@@ -26,13 +26,20 @@ metadata against the date in its filename and ancestor folders.
 
 const UNDO_LOG_NAME = 'photo-audit-renames.log';
 
-function printWrongDate(finding: Extract<Finding, {kind: 'WRONG_DATE'}>, root: string): void {
+function printLocation(location: string | null): void {
+	if (location !== null) {
+		console.log(`  location  : ${location}`);
+	}
+}
+
+function printWrongDate(finding: Extract<Finding, {kind: 'WRONG_DATE'}>, root: string, location: string | null): void {
 	const name = basename(finding.path);
 	console.log(`\nWRONG DATE  ${relative(root, finding.path)}`);
 	console.log(`  metadata  : ${formatDate(finding.metadataDate)}`);
 	for (const conflict of finding.conflicts) {
 		console.log(`  ${conflict.source.padEnd(10)}: ${formatDate(conflict.found)}  <- disagrees`);
 	}
+	printLocation(location);
 	if (finding.conflicts.some((conflict) => conflict.source === 'filename')) {
 		console.log(`  rename to : ${proposeFilename(name, finding.metadataDate)}`);
 	}
@@ -41,17 +48,27 @@ function printWrongDate(finding: Extract<Finding, {kind: 'WRONG_DATE'}>, root: s
 	}
 }
 
-function printMissingDate(finding: Extract<Finding, {kind: 'MISSING_DATE'}>, root: string): void {
+function printMissingDate(
+	finding: Extract<Finding, {kind: 'MISSING_DATE'}>,
+	root: string,
+	location: string | null,
+): void {
 	console.log(`\nMISSING DATE  ${relative(root, finding.path)}`);
 	console.log(`  computed  : ${formatDate(finding.metadataDate)}`);
+	printLocation(location);
 	console.log(`  rename to : ${proposeFilename(basename(finding.path), finding.metadataDate)}`);
 }
 
-function printMetadataSuspect(finding: Extract<Finding, {kind: 'METADATA_SUSPECT'}>, root: string): void {
+function printMetadataSuspect(
+	finding: Extract<Finding, {kind: 'METADATA_SUSPECT'}>,
+	root: string,
+	location: string | null,
+): void {
 	console.log(`\nMETADATA SUSPECT  ${relative(root, finding.path)}`);
 	console.log(`  metadata  : ${formatDate(finding.metadataDate)}  <- date-only / low-confidence`);
 	console.log(`  filename  : ${finding.filenameDate === null ? '-' : formatDate(finding.filenameDate)}`);
 	console.log(`  folder    : ${finding.folderDate === null ? '-' : formatDate(finding.folderDate)}`);
+	printLocation(location);
 }
 
 async function pathExists(path: string): Promise<boolean> {
@@ -253,24 +270,24 @@ async function main(): Promise<void> {
 	};
 
 	const wrongDateFindings: Extract<Finding, {kind: 'WRONG_DATE'}>[] = [];
-	const exiftool = new ExifTool();
+	const exiftool = new ExifTool({geolocation: true});
 	let scanned = 0;
 	try {
 		for await (const path of walkMedia(root)) {
 			if (scanned >= limit) {
 				break;
 			}
-			const finding = await auditFile(exiftool, path, root, homeZone);
+			const {finding, location} = await auditFile(exiftool, path, root, homeZone);
 			counts[finding.kind] += 1;
 			scanned += 1;
 
 			if (finding.kind === 'WRONG_DATE') {
-				printWrongDate(finding, root);
+				printWrongDate(finding, root, location);
 				wrongDateFindings.push(finding);
 			} else if (finding.kind === 'METADATA_SUSPECT') {
-				printMetadataSuspect(finding, root);
+				printMetadataSuspect(finding, root, location);
 			} else if (finding.kind === 'MISSING_DATE' && values['show-all']) {
-				printMissingDate(finding, root);
+				printMissingDate(finding, root, location);
 			} else if (finding.kind === 'NO_METADATA_DATE' && values['show-all']) {
 				console.log(`\nNO METADATA DATE  ${relative(root, finding.path)}`);
 			}

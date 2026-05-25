@@ -2,6 +2,7 @@ import {basename, dirname} from 'node:path';
 import type {ExifTool} from 'exiftool-vendored';
 import {classify, type Finding} from './classify.ts';
 import type {DateParts} from './dateParts.ts';
+import {formatPlaceFromTags} from './geocode.ts';
 import {extractMetadataDate} from './metadata.ts';
 import {parseDateFromString} from './parseDate.ts';
 
@@ -36,20 +37,38 @@ export function datedAncestorFolder(filePath: string, root: string): string | nu
 	}
 }
 
+export interface AuditResult {
+	finding: Finding;
+	/**
+	 * Human-readable place name derived from ExifTool's geolocation tags, when
+	 * present. Null when the file has no GPS metadata or geolocation lookup did
+	 * not produce a match.
+	 */
+	location: string | null;
+}
+
 /**
  * Audit a single file: compare its metadata date against name and folder.
  *
  * `homeZone` is the IANA timezone used to resolve defaulted-UTC video dates
- * into a calendar date (see {@link extractMetadataDate}).
+ * into a calendar date (see {@link extractMetadataDate}). The returned
+ * {@link AuditResult.location} is non-null only when ExifTool was launched
+ * with `geolocation: true` and the file carried valid GPS coordinates.
  */
-export async function auditFile(exiftool: ExifTool, path: string, root: string, homeZone: string): Promise<Finding> {
+export async function auditFile(
+	exiftool: ExifTool,
+	path: string,
+	root: string,
+	homeZone: string,
+): Promise<AuditResult> {
 	const tags = await exiftool.read(path);
 	const metadata = extractMetadataDate(tags, homeZone);
-	return classify({
+	const finding = classify({
 		path,
 		metadataDate: metadata?.date ?? null,
 		metadataConfidence: metadata?.confidence ?? 'high',
 		filenameDate: parseDateFromString(basename(path)),
 		folderDate: folderDateFor(path, root),
 	});
+	return {finding, location: formatPlaceFromTags(tags)};
 }
