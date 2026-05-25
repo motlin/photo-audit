@@ -100,16 +100,72 @@ function confidenceOf(value: unknown): MetadataConfidence {
 }
 
 /**
+ * True when this candidate's wall-clock is a real local time rather than a
+ * defaulted-UTC value that had to be shifted into the home zone. An explicit
+ * EXIF "...Z" (zone known, `inferredZone === false`) counts as a real zone.
+ */
+function hasRealZone(value: unknown): boolean {
+	if (value instanceof ExifDateTime) {
+		return !isDefaultedUtc(value);
+	}
+	return true;
+}
+
+/**
+ * True when the candidate carries a real captured wall-clock time, not a
+ * midnight or date-only sentinel.
+ */
+function hasRealTime(value: unknown): boolean {
+	return confidenceOf(value) === 'high';
+}
+
+/**
  * Pull the most trustworthy capture date out of a file's metadata tags,
  * normalized to local wall-clock parts in `homeZone`.
+ *
+ * Every {@link DATE_TAGS} entry is scored on two axes:
+ *   1. real wall-clock time (non-midnight) beats date-only/midnight sentinels
+ *   2. an explicit or recovered timezone beats a defaulted-UTC value
+ *
+ * The {@link DATE_TAGS} order acts as a tie-breaker. This lets a real
+ * `CreateDate` override a midnight `DateTimeOriginal`, while still preferring
+ * `SubSecDateTimeOriginal` over `DateTimeOriginal` when they are equivalent.
  */
 export function extractMetadataDate(tags: Tags, homeZone: string): MetadataDate | null {
-	for (const tag of DATE_TAGS) {
+	type Candidate = {
+		date: DateParts;
+		tag: (typeof DATE_TAGS)[number];
+		raw: unknown;
+		priority: number;
+	};
+
+	const candidates: Candidate[] = [];
+	for (let priority = 0; priority < DATE_TAGS.length; priority++) {
+		const tag = DATE_TAGS[priority]!;
 		const raw = tags[tag];
 		const date = toLocalDateParts(raw, homeZone);
 		if (date !== null) {
-			return {date, tag, confidence: confidenceOf(raw)};
+			candidates.push({date, tag, raw, priority});
 		}
 	}
-	return null;
+
+	if (candidates.length === 0) {
+		return null;
+	}
+
+	const best = candidates.reduce((winner, current) => {
+		const winnerTime = hasRealTime(winner.raw);
+		const currentTime = hasRealTime(current.raw);
+		if (currentTime !== winnerTime) {
+			return currentTime ? current : winner;
+		}
+		const winnerZone = hasRealZone(winner.raw);
+		const currentZone = hasRealZone(current.raw);
+		if (currentZone !== winnerZone) {
+			return currentZone ? current : winner;
+		}
+		return current.priority < winner.priority ? current : winner;
+	});
+
+	return {date: best.date, tag: best.tag, confidence: confidenceOf(best.raw)};
 }

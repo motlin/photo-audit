@@ -130,3 +130,139 @@ describe('extractMetadataDate confidence', () => {
 		expect(result?.confidence).toBe('high');
 	});
 });
+
+describe('extractMetadataDate tag selection', () => {
+	it('prefers a real-timestamp CreateDate over a midnight DateTimeOriginal', () => {
+		// Real-world case from iMazing dump: DateTimeOriginal was a date-only
+		// sentinel at midnight, while CreateDate carried the real capture time.
+		const midnightOriginal = new ExifDateTime(
+			2021,
+			4,
+			12,
+			0,
+			0,
+			0,
+			undefined,
+			0,
+			'2021:04:12 00:00:00Z',
+			'UTC',
+			false,
+		);
+		const realCreate = new ExifDateTime(2021, 5, 15, 15, 25, 0, undefined, 0, '2021:05:15 15:25:00Z', 'UTC', false);
+		const tags = {
+			DateTimeOriginal: midnightOriginal,
+			CreateDate: realCreate,
+		} as unknown as Tags;
+		const result = extractMetadataDate(tags, 'America/New_York');
+		expect(result).not.toBeNull();
+		expect(result?.tag).toBe('CreateDate');
+		expect(result?.confidence).toBe('high');
+		expect(result?.date).toEqual({
+			year: 2021,
+			month: 5,
+			day: 15,
+			time: {hour: 15, minute: 25, second: 0},
+		});
+	});
+
+	it('prefers an explicit-offset CreationDate over a defaulted-UTC CreateDate', () => {
+		const defaultedUtcCreate = new ExifDateTime(
+			2019,
+			2,
+			11,
+			4,
+			49,
+			44,
+			undefined,
+			0,
+			'2019:02:11 04:49:44',
+			'UTC',
+			true,
+		);
+		const zonedCreation = new ExifDateTime(
+			2019,
+			2,
+			10,
+			23,
+			49,
+			44,
+			undefined,
+			-300,
+			'2019:02:10 23:49:44-05:00',
+			'UTC-5',
+			false,
+		);
+		const tags = {
+			CreateDate: defaultedUtcCreate,
+			CreationDate: zonedCreation,
+		} as unknown as Tags;
+		const result = extractMetadataDate(tags, 'America/Los_Angeles');
+		expect(result).not.toBeNull();
+		expect(result?.tag).toBe('CreationDate');
+		expect(result?.date).toEqual({
+			year: 2019,
+			month: 2,
+			day: 10,
+			time: {hour: 23, minute: 49, second: 44},
+		});
+	});
+
+	it('falls back to precedence order when candidates tie on confidence and zone', () => {
+		const subSec = new ExifDateTime(2022, 6, 1, 10, 0, 0, 500, -240, '2022:06:01 10:00:00.5-04:00', 'UTC-4', false);
+		const original = new ExifDateTime(
+			2022,
+			6,
+			1,
+			10,
+			0,
+			0,
+			undefined,
+			-240,
+			'2022:06:01 10:00:00-04:00',
+			'UTC-4',
+			false,
+		);
+		const tags = {
+			SubSecDateTimeOriginal: subSec,
+			DateTimeOriginal: original,
+		} as unknown as Tags;
+		const result = extractMetadataDate(tags, 'America/New_York');
+		expect(result?.tag).toBe('SubSecDateTimeOriginal');
+	});
+
+	it("marks the picked date 'date-only' when every candidate is midnight", () => {
+		const midnightOriginal = new ExifDateTime(
+			2021,
+			4,
+			12,
+			0,
+			0,
+			0,
+			undefined,
+			0,
+			'2021:04:12 00:00:00Z',
+			'UTC',
+			false,
+		);
+		const midnightCreate = new ExifDateTime(
+			2021,
+			4,
+			12,
+			0,
+			0,
+			0,
+			undefined,
+			0,
+			'2021:04:12 00:00:00Z',
+			'UTC',
+			false,
+		);
+		const tags = {
+			DateTimeOriginal: midnightOriginal,
+			CreateDate: midnightCreate,
+		} as unknown as Tags;
+		const result = extractMetadataDate(tags, 'America/New_York');
+		expect(result).not.toBeNull();
+		expect(result?.confidence).toBe('date-only');
+	});
+});
