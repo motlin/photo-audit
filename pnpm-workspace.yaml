@@ -16,4 +16,5 @@ peerDependencyRules:
         vitest: '*'
 allowBuilds:
     esbuild: true
+    fallow: true
     unrs-resolver: true
