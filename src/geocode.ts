@@ -121,60 +121,8 @@ export interface GeolocationTagSubset {
  * are treated as missing. Returns null when every field is absent.
  */
 export function formatPlaceFromTags(tags: GeolocationTagSubset): string | null {
-	const parts: string[] = [];
-	if (tags.GeolocationCity !== undefined && tags.GeolocationCity !== '') {
-		parts.push(tags.GeolocationCity);
-	}
-	if (tags.GeolocationRegion !== undefined && tags.GeolocationRegion !== '') {
-		parts.push(tags.GeolocationRegion);
-	}
-	if (tags.GeolocationCountry !== undefined && tags.GeolocationCountry !== '') {
-		parts.push(tags.GeolocationCountry);
-	}
-	if (parts.length === 0) {
-		return null;
-	}
-	return parts.join(', ');
-}
-
-/**
- * Build a {@link LocationLabel} from ExifTool's geolocation tags, dropping
- * empty strings. Returns null when every field is missing.
- */
-export function locationFromTags(tags: GeolocationTagSubset): LocationLabel | null {
-	const label: LocationLabel = {};
-	if (tags.GeolocationCity !== undefined && tags.GeolocationCity !== '') {
-		label.city = tags.GeolocationCity;
-	}
-	if (tags.GeolocationRegion !== undefined && tags.GeolocationRegion !== '') {
-		label.region = tags.GeolocationRegion;
-	}
-	if (tags.GeolocationCountry !== undefined && tags.GeolocationCountry !== '') {
-		label.country = tags.GeolocationCountry;
-	}
-	if (Object.keys(label).length === 0) {
-		return null;
-	}
-	return label;
-}
-
-/** Format a {@link LocationLabel} as a comma-separated string, or null when empty. */
-export function formatLocationLabel(label: LocationLabel | null): string | null {
-	if (label === null) {
-		return null;
-	}
-	const parts: string[] = [];
-	if (label.city !== undefined && label.city !== '') {
-		parts.push(label.city);
-	}
-	if (label.region !== undefined && label.region !== '') {
-		parts.push(label.region);
-	}
-	if (label.country !== undefined && label.country !== '') {
-		parts.push(label.country);
-	}
-	if (parts.length === 0) {
-		return null;
-	}
-	return parts.join(', ');
+	const parts = [tags.GeolocationCity, tags.GeolocationRegion, tags.GeolocationCountry].filter(
+		(part): part is string => part !== undefined && part !== '',
+	);
+	return parts.length === 0 ? null : parts.join(', ');
 }
