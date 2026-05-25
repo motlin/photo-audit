@@ -1,13 +1,15 @@
-import {basename, relative, resolve} from 'node:path';
+import {appendFile, access, rename} from 'node:fs/promises';
+import {basename, dirname, join, relative, resolve} from 'node:path';
 import {parseArgs} from 'node:util';
 import {ExifTool} from 'exiftool-vendored';
 import {auditFile} from './audit.ts';
 import type {Finding} from './classify.ts';
 import {formatDate} from './dateParts.ts';
+import {collisionsIn, formatUndoLogEntry, type ProposedRename} from './fix.ts';
 import {proposeFilename} from './proposeName.ts';
 import {walkMedia} from './walk.ts';
 
-const USAGE = `Usage: just audit "<directory>" [--limit N] [--show-all] [--zone IANA] [--help]
+const USAGE = `Usage: just audit "<directory>" [--limit N] [--show-all] [--zone IANA] [--fix] [--help]
 
 Audits every photo/video under <directory>, comparing the date in each file's
 metadata against the date in its filename and ancestor folders.
@@ -16,8 +18,12 @@ metadata against the date in its filename and ancestor folders.
   --show-all     also print MISSING_DATE and NO_METADATA_DATE findings
   --zone IANA    timezone for resolving UTC-only video dates
                  (default: this machine's timezone)
+  --fix          rename files whose filename date disagrees with high-confidence
+                 metadata (default: dry-run/report-only)
   --help         print this message and exit
 `;
+
+const UNDO_LOG_NAME = 'photo-audit-renames.log';
 
 function printWrongDate(finding: Extract<Finding, {kind: 'WRONG_DATE'}>, root: string): void {
 	const name = basename(finding.path);
@@ -47,6 +53,58 @@ function printMetadataSuspect(finding: Extract<Finding, {kind: 'METADATA_SUSPECT
 	console.log(`  folder    : ${finding.folderDate === null ? '-' : formatDate(finding.folderDate)}`);
 }
 
+async function pathExists(path: string): Promise<boolean> {
+	try {
+		await access(path);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * Apply file renames for WRONG_DATE findings that name a precise filename
+ * conflict against high-confidence metadata. Every other case is skipped with
+ * a labelled reason so the user can see what was held back and why.
+ */
+async function applyFixes(
+	wrongDateFindings: readonly Extract<Finding, {kind: 'WRONG_DATE'}>[],
+	root: string,
+): Promise<void> {
+	const renameCandidates: ProposedRename[] = [];
+	for (const finding of wrongDateFindings) {
+		const filenameConflict = finding.conflicts.some((conflict) => conflict.source === 'filename');
+		if (!filenameConflict) {
+			continue;
+		}
+		if (finding.metadataConfidence !== 'high') {
+			console.log(`SKIPPED (metadata is date-only): ${relative(root, finding.path)}`);
+			continue;
+		}
+		const dir = dirname(finding.path);
+		const proposed = proposeFilename(basename(finding.path), finding.metadataDate);
+		renameCandidates.push({from: finding.path, to: join(dir, proposed)});
+	}
+
+	const collisions = collisionsIn(renameCandidates);
+	const undoLogPath = join(root, UNDO_LOG_NAME);
+
+	for (const {from, to} of renameCandidates) {
+		if (collisions.has(to)) {
+			console.log(`SKIPPED (proposed-name collision): ${from} -> ${to}`);
+			continue;
+		}
+		if (await pathExists(to)) {
+			console.log(`SKIPPED (target exists): ${from} -> ${to}`);
+			continue;
+		}
+		await rename(from, to);
+		const entry = formatUndoLogEntry({timestamp: new Date().toISOString(), from, to});
+		await appendFile(undoLogPath, entry);
+		console.log(`RENAMED ${from} -> ${to}`);
+	}
+}
+
 async function main(): Promise<void> {
 	const {values, positionals} = parseArgs({
 		allowPositionals: true,
@@ -54,6 +112,7 @@ async function main(): Promise<void> {
 			limit: {type: 'string'},
 			'show-all': {type: 'boolean', default: false},
 			zone: {type: 'string'},
+			fix: {type: 'boolean', default: false},
 			help: {type: 'boolean', short: 'h', default: false},
 		},
 	});
@@ -81,6 +140,7 @@ async function main(): Promise<void> {
 		NO_METADATA_DATE: 0,
 	};
 
+	const wrongDateFindings: Extract<Finding, {kind: 'WRONG_DATE'}>[] = [];
 	const exiftool = new ExifTool();
 	let scanned = 0;
 	try {
@@ -94,6 +154,7 @@ async function main(): Promise<void> {
 
 			if (finding.kind === 'WRONG_DATE') {
 				printWrongDate(finding, root);
+				wrongDateFindings.push(finding);
 			} else if (finding.kind === 'METADATA_SUSPECT') {
 				printMetadataSuspect(finding, root);
 			} else if (finding.kind === 'MISSING_DATE' && values['show-all']) {
@@ -108,6 +169,12 @@ async function main(): Promise<void> {
 		}
 	} finally {
 		await exiftool.end();
+	}
+
+	if (values.fix && wrongDateFindings.length > 0) {
+		console.log(`\n${'-'.repeat(48)}`);
+		console.log('Applying --fix renames');
+		await applyFixes(wrongDateFindings, root);
 	}
 
 	console.log(`\n${'='.repeat(48)}`);

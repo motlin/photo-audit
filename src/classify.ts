@@ -34,7 +34,13 @@ export interface Conflict {
  */
 export type Finding =
 	| {kind: 'CONSISTENT'; path: string; metadataDate: DateParts}
-	| {kind: 'WRONG_DATE'; path: string; metadataDate: DateParts; conflicts: Conflict[]}
+	| {
+			kind: 'WRONG_DATE';
+			path: string;
+			metadataDate: DateParts;
+			metadataConfidence: MetadataConfidence;
+			conflicts: Conflict[];
+	  }
 	| {
 			kind: 'METADATA_SUSPECT';
 			path: string;
@@ -67,7 +73,7 @@ export function classify(input: AuditInput): Finding {
 		if (metadataConfidence === 'date-only' && hasPreciseRival) {
 			return {kind: 'METADATA_SUSPECT', path, metadataDate, filenameDate, folderDate};
 		}
-		return {kind: 'WRONG_DATE', path, metadataDate, conflicts};
+		return {kind: 'WRONG_DATE', path, metadataDate, metadataConfidence, conflicts};
 	}
 	if (claims.length === 0) {
 		return {kind: 'MISSING_DATE', path, metadataDate};
