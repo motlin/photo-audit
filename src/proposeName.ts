@@ -25,15 +25,3 @@ export function proposeFilename(originalName: string, date: DateParts): string {
 
 	return remainder.length > 0 ? `${datePrefix} ${remainder}${extension}` : `${datePrefix}${extension}`;
 }
-
-/**
- * Propose a folder name that puts `date` at the front in `YYYY-MM-DD` form,
- * preserving the title/person suffix after any existing leading date. Folders
- * are day-precision so any time component on `date` is discarded.
- */
-export function proposeFolderName(originalName: string, date: DateParts): string {
-	const remainder = originalName.replace(LEADING_DATE, '').trim();
-	const datePrefix = formatDate({...date, time: null});
-
-	return remainder.length > 0 ? `${datePrefix} ${remainder}` : datePrefix;
-}

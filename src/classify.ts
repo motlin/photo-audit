@@ -23,7 +23,7 @@ export interface AuditInput {
 	folderDate: DateParts | null;
 }
 
-export type DateSource = 'filename' | 'folder';
+export type DateSource = 'filename';
 
 export interface Conflict {
 	source: DateSource;
@@ -31,13 +31,17 @@ export interface Conflict {
 }
 
 /**
- * Outcome of auditing one file's dates. Metadata is treated as ground truth;
- * filename and folder dates are the claims being checked against it.
+ * Outcome of auditing one file's dates. Metadata is treated as ground truth and
+ * the filename date is the claim being checked against it. The folder date is
+ * informational only: a matching folder date can rescue a file from
+ * MISSING_DATE, but a folder mismatch is never a per-file finding because
+ * dated event folders ("2015-07-15 Levi's Birth/") are starting-day labels and
+ * legitimately contain files from later days.
  *
  * `METADATA_SUSPECT` is the exception: the metadata looks like a date-only
- * sentinel (midnight wall-clock) and the filename or folder carries a precise
- * timestamp that would make a better source of truth. We surface the conflict
- * for the user to judge but never propose an automatic rename.
+ * sentinel (midnight wall-clock) and the filename carries a precise timestamp
+ * that would make a better source of truth. We surface the conflict for the
+ * user to judge but never propose an automatic rename.
  */
 export type Finding =
 	| {kind: 'CONSISTENT'; path: string; metadataDate: DateParts}
@@ -83,24 +87,20 @@ export function classify(input: AuditInput): Finding {
 		return {kind: 'NO_METADATA_DATE', path};
 	}
 
-	const claims: Conflict[] = [];
-	if (filenameDate !== null) {
-		claims.push({source: 'filename', found: filenameDate});
-	}
-	if (folderDate !== null) {
-		claims.push({source: 'folder', found: folderDate});
-	}
-
-	const conflicts = claims.filter((claim) => !datesAgree(claim.found, metadataDate));
-	if (conflicts.length > 0) {
-		const hasPreciseRival = conflicts.some((conflict) => conflict.found.time !== null);
-		if (metadataConfidence === 'date-only' && hasPreciseRival) {
+	const filenameConflict =
+		filenameDate !== null && !datesAgree(filenameDate, metadataDate)
+			? {source: 'filename' as const, found: filenameDate}
+			: null;
+	if (filenameConflict !== null) {
+		if (metadataConfidence === 'date-only' && filenameConflict.found.time !== null) {
 			return {kind: 'METADATA_SUSPECT', path, metadataDate, filenameDate, folderDate};
 		}
-		return {kind: 'WRONG_DATE', path, metadataDate, metadataConfidence, conflicts};
+		return {kind: 'WRONG_DATE', path, metadataDate, metadataConfidence, conflicts: [filenameConflict]};
 	}
-	if (claims.length === 0) {
-		return {kind: 'MISSING_DATE', path, metadataDate};
+
+	const folderAgrees = folderDate !== null && datesAgree(folderDate, metadataDate);
+	if (filenameDate !== null || folderAgrees) {
+		return {kind: 'CONSISTENT', path, metadataDate};
 	}
-	return {kind: 'CONSISTENT', path, metadataDate};
+	return {kind: 'MISSING_DATE', path, metadataDate};
 }

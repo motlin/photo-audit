@@ -4,16 +4,18 @@ import {parseArgs} from 'node:util';
 import {ExifTool} from 'exiftool-vendored';
 import {auditFile, datedAncestorFolder} from './audit.ts';
 import type {Finding} from './classify.ts';
-import {datesAgree, formatDate, type DateParts} from './dateParts.ts';
-import {collisionsIn, folderConsensus, formatUndoLogEntry, type ProposedRename} from './fix.ts';
+import {formatDate} from './dateParts.ts';
+import {collisionsIn, formatUndoLogEntry, type ProposedRename} from './fix.ts';
+import {planFolderWarnings, type DatedFolder, type FolderFileEntry, type FolderWarning} from './folderWarnings.ts';
 import {parseDateFromString} from './parseDate.ts';
-import {proposeFilename, proposeFolderName} from './proposeName.ts';
+import {proposeFilename} from './proposeName.ts';
 import {walkMedia} from './walk.ts';
 
 const USAGE = `Usage: just audit "<directory>" [--limit N] [--show-all] [--zone IANA] [--fix] [--help]
 
 Audits every photo/video under <directory>, comparing the date in each file's
-metadata against the date in its filename and ancestor folders.
+metadata against the date in its filename. Folder dates are informational only
+(they can confirm a file but never flag it as wrong).
 
   --limit N      stop after auditing N files (useful for a quick sample)
   --show-all     also print MISSING_DATE and NO_METADATA_DATE findings
@@ -40,12 +42,7 @@ function printWrongDate(finding: Extract<Finding, {kind: 'WRONG_DATE'}>, root: s
 		console.log(`  ${conflict.source.padEnd(10)}: ${formatDate(conflict.found)}  <- disagrees`);
 	}
 	printLocation(location);
-	if (finding.conflicts.some((conflict) => conflict.source === 'filename')) {
-		console.log(`  rename to : ${proposeFilename(name, finding.metadataDate)}`);
-	}
-	if (finding.conflicts.some((conflict) => conflict.source === 'folder')) {
-		console.log(`  folder    : disagrees (grouped folder-rename report follows)`);
-	}
+	console.log(`  rename to : ${proposeFilename(name, finding.metadataDate)}`);
 }
 
 function printMissingDate(
@@ -83,123 +80,27 @@ function printEditDerived(
 	printLocation(location);
 }
 
+function printFolderWarning(warning: FolderWarning, root: string): void {
+	if (warning.kind === 'FOLDER_UNIFORM_METADATA') {
+		console.log(`\nFOLDER UNIFORM METADATA  ${relative(root, warning.folderPath)}`);
+		console.log(`  folder    : ${formatDate(warning.folderDate)}`);
+		console.log(`  all ${warning.fileCount} files share metadata: ${formatDate(warning.sharedTimestamp)}`);
+		console.log(`  metadata is likely a file-mtime fallback rather than a real capture date`);
+	} else {
+		console.log(`\nFOLDER AFTER FILES  ${relative(root, warning.folderPath)}`);
+		console.log(`  folder    : ${formatDate(warning.folderDate)}  <- after every file`);
+		console.log(
+			`  files     : ${formatDate(warning.earliestFile)} .. ${formatDate(warning.latestFile)}  (${warning.fileCount} files)`,
+		);
+	}
+}
+
 async function pathExists(path: string): Promise<boolean> {
 	try {
 		await access(path);
 		return true;
 	} catch {
 		return false;
-	}
-}
-
-interface FolderRenameProposal {
-	folderPath: string;
-	folderDate: DateParts;
-	consensusDate: DateParts;
-	agreeing: number;
-	total: number;
-	proposedName: string;
-}
-
-interface FolderRefusal {
-	folderPath: string;
-	folderDate: DateParts;
-	files: {path: string; metadataDate: DateParts}[];
-}
-
-/**
- * Group folder-conflict WRONG_DATE findings by their nearest dated ancestor
- * folder, then split into proposals (the folder's files agree on a single
- * different date) and refusals (the files disagree below threshold).
- */
-function planFolderRenames(
-	findings: readonly Extract<Finding, {kind: 'WRONG_DATE'}>[],
-	root: string,
-): {proposals: FolderRenameProposal[]; refusals: FolderRefusal[]} {
-	const groups = new Map<string, Extract<Finding, {kind: 'WRONG_DATE'}>[]>();
-	for (const finding of findings) {
-		const hasFolderConflict = finding.conflicts.some((conflict) => conflict.source === 'folder');
-		if (!hasFolderConflict) {
-			continue;
-		}
-		const folderPath = datedAncestorFolder(finding.path, root);
-		if (folderPath === null) {
-			continue;
-		}
-		const bucket = groups.get(folderPath);
-		if (bucket === undefined) {
-			groups.set(folderPath, [finding]);
-		} else {
-			bucket.push(finding);
-		}
-	}
-
-	const proposals: FolderRenameProposal[] = [];
-	const refusals: FolderRefusal[] = [];
-	for (const [folderPath, members] of groups) {
-		const folderDate = parseDateFromString(basename(folderPath));
-		if (folderDate === null) {
-			continue;
-		}
-		const consensus = folderConsensus(members.map((finding) => finding.metadataDate));
-		if (consensus === null || datesAgree(consensus.date, folderDate)) {
-			refusals.push({
-				folderPath,
-				folderDate,
-				files: members.map((finding) => ({path: finding.path, metadataDate: finding.metadataDate})),
-			});
-			continue;
-		}
-		proposals.push({
-			folderPath,
-			folderDate,
-			consensusDate: consensus.date,
-			agreeing: consensus.agreeing,
-			total: consensus.total,
-			proposedName: proposeFolderName(basename(folderPath), consensus.date),
-		});
-	}
-	return {proposals, refusals};
-}
-
-function printFolderRenames(
-	{proposals, refusals}: {proposals: FolderRenameProposal[]; refusals: FolderRefusal[]},
-	root: string,
-): void {
-	for (const proposal of proposals) {
-		console.log(`\nFOLDER RENAME  ${relative(root, proposal.folderPath)}`);
-		console.log(`  current   : ${formatDate(proposal.folderDate)}`);
-		console.log(
-			`  consensus : ${formatDate(proposal.consensusDate)}  (${proposal.agreeing}/${proposal.total} files)`,
-		);
-		console.log(`  rename to : ${proposal.proposedName}`);
-	}
-	for (const refusal of refusals) {
-		console.log(`\nFOLDER DISAGREEMENT  ${relative(root, refusal.folderPath)}`);
-		console.log(`  current   : ${formatDate(refusal.folderDate)}`);
-		console.log(`  files disagree below 80% threshold; per-file report:`);
-		for (const file of refusal.files) {
-			console.log(`    ${relative(root, file.path)}  -> ${formatDate(file.metadataDate)}`);
-		}
-	}
-}
-
-/**
- * Apply folder renames to disk. Logs every rename to the shared undo log and
- * skips any folder whose target already exists.
- */
-async function applyFolderRenames(proposals: readonly FolderRenameProposal[], root: string): Promise<void> {
-	const undoLogPath = join(root, UNDO_LOG_NAME);
-	for (const proposal of proposals) {
-		const to = join(dirname(proposal.folderPath), proposal.proposedName);
-		if (await pathExists(to)) {
-			console.log(`SKIPPED FOLDER (target exists): ${proposal.folderPath} -> ${to}`);
-			continue;
-		}
-		await rename(proposal.folderPath, to);
-		const entry = formatUndoLogEntry({timestamp: new Date().toISOString(), from: proposal.folderPath, to});
-		await appendFile(undoLogPath, entry);
-		console.log(`RENAMED FOLDER ${proposal.folderPath} -> ${to}`);
 	}
 }
 
@@ -214,10 +115,6 @@ async function applyFixes(
 ): Promise<void> {
 	const renameCandidates: ProposedRename[] = [];
 	for (const finding of wrongDateFindings) {
-		const filenameConflict = finding.conflicts.some((conflict) => conflict.source === 'filename');
-		if (!filenameConflict) {
-			continue;
-		}
 		if (finding.metadataConfidence !== 'high') {
 			console.log(`SKIPPED (metadata is date-only): ${relative(root, finding.path)}`);
 			continue;
@@ -283,6 +180,8 @@ async function main(): Promise<void> {
 	};
 
 	const wrongDateFindings: Extract<Finding, {kind: 'WRONG_DATE'}>[] = [];
+	const folderEntries: FolderFileEntry[] = [];
+	const datedFolders = new Map<string, DatedFolder>();
 	const exiftool = new ExifTool({geolocation: true});
 	let scanned = 0;
 	try {
@@ -307,6 +206,19 @@ async function main(): Promise<void> {
 				console.log(`\nNO METADATA DATE  ${relative(root, finding.path)}`);
 			}
 
+			if (finding.kind === 'CONSISTENT' || finding.kind === 'WRONG_DATE' || finding.kind === 'MISSING_DATE') {
+				const folderPath = datedAncestorFolder(path, root);
+				if (folderPath !== null) {
+					if (!datedFolders.has(folderPath)) {
+						const folderDate = parseDateFromString(basename(folderPath));
+						if (folderDate !== null) {
+							datedFolders.set(folderPath, {folderPath, folderDate});
+						}
+					}
+					folderEntries.push({path, metadataDate: finding.metadataDate, folderPath});
+				}
+			}
+
 			if (scanned % 200 === 0) {
 				process.stderr.write(`  ...scanned ${scanned} files\r`);
 			}
@@ -315,22 +227,19 @@ async function main(): Promise<void> {
 		await exiftool.end();
 	}
 
-	const folderPlan = planFolderRenames(wrongDateFindings, root);
-	if (folderPlan.proposals.length > 0 || folderPlan.refusals.length > 0) {
+	const folderWarnings = planFolderWarnings(folderEntries, Array.from(datedFolders.values()));
+	if (folderWarnings.length > 0) {
 		console.log(`\n${'-'.repeat(48)}`);
-		console.log('Folder rename proposals');
-		printFolderRenames(folderPlan, root);
+		console.log('Folder-level warnings');
+		for (const warning of folderWarnings) {
+			printFolderWarning(warning, root);
+		}
 	}
 
 	if (values.fix && wrongDateFindings.length > 0) {
 		console.log(`\n${'-'.repeat(48)}`);
 		console.log('Applying --fix file renames');
 		await applyFixes(wrongDateFindings, root);
-	}
-	if (values.fix && folderPlan.proposals.length > 0) {
-		console.log(`\n${'-'.repeat(48)}`);
-		console.log('Applying --fix folder renames');
-		await applyFolderRenames(folderPlan.proposals, root);
 	}
 
 	console.log(`\n${'='.repeat(48)}`);
@@ -342,6 +251,7 @@ async function main(): Promise<void> {
 	console.log(`  MISSING_DATE     ${counts.MISSING_DATE}`);
 	console.log(`  NO_METADATA_DATE ${counts.NO_METADATA_DATE}`);
 	console.log(`  CONSISTENT       ${counts.CONSISTENT}`);
+	console.log(`  folder warnings  ${folderWarnings.length}`);
 }
 
 await main();

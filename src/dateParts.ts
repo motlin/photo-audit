@@ -14,8 +14,6 @@ export interface DateParts {
 	time: {hour: number; minute: number; second: number; millisecond?: number} | null;
 }
 
-export type DatePrecision = 'month' | 'day';
-
 /** Compare two dates at the coarsest precision they share. */
 export function datesAgree(a: DateParts, b: DateParts): boolean {
 	if (a.year !== b.year || a.month !== b.month) {

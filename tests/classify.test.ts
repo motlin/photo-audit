@@ -37,17 +37,14 @@ describe('classify', () => {
 		}
 	});
 
-	it('flags WRONG_DATE when an ancestor folder date disagrees', () => {
+	it('does not flag WRONG_DATE when only an ancestor folder date disagrees (folder dates are labels, not per-file constraints)', () => {
 		const finding = classify({
 			path: '/photos/2019/2019-01-01 Party/IMG_1.jpg',
 			metadataDate: date(2023, 5, 26),
 			filenameDate: null,
 			folderDate: date(2019, 1, 1),
 		});
-		expect(finding.kind).toBe('WRONG_DATE');
-		if (finding.kind === 'WRONG_DATE') {
-			expect(finding.conflicts).toEqual([{source: 'folder', found: date(2019, 1, 1)}]);
-		}
+		expect(finding.kind).toBe('MISSING_DATE');
 	});
 
 	it('reports CONSISTENT when filename and folder both agree with metadata', () => {
@@ -90,7 +87,7 @@ describe('classify', () => {
 		expect(finding.kind).toBe('NO_METADATA_DATE');
 	});
 
-	it('collects multiple conflicts when filename and folder both disagree', () => {
+	it('reports only the filename conflict when filename and folder both disagree (folder is ignored)', () => {
 		const finding = classify({
 			path: '/photos/2019-01-01 Party/2020-02-02 thing.jpg',
 			metadataDate: date(2023, 5, 26),
@@ -99,8 +96,28 @@ describe('classify', () => {
 		});
 		expect(finding.kind).toBe('WRONG_DATE');
 		if (finding.kind === 'WRONG_DATE') {
-			expect(finding.conflicts).toHaveLength(2);
+			expect(finding.conflicts).toEqual([{source: 'filename', found: date(2020, 2, 2)}]);
 		}
+	});
+
+	it('reports CONSISTENT when filename has no date but folder date agrees with metadata', () => {
+		const finding = classify({
+			path: '/photos/2022-06-04 Addams family/IMG_random.jpg',
+			metadataDate: date(2022, 6, 4),
+			filenameDate: null,
+			folderDate: date(2022, 6, 4),
+		});
+		expect(finding.kind).toBe('CONSISTENT');
+	});
+
+	it('reports MISSING_DATE when filename has no date and folder disagrees (folder cannot rescue)', () => {
+		const finding = classify({
+			path: '/photos/2020-11-02 Genesis School Photos/uuid.jpg',
+			metadataDate: date(2020, 10, 29),
+			filenameDate: null,
+			folderDate: date(2020, 11, 2),
+		});
+		expect(finding.kind).toBe('MISSING_DATE');
 	});
 
 	it('flags METADATA_SUSPECT when date-only metadata conflicts with a precise filename timestamp', () => {
@@ -119,7 +136,7 @@ describe('classify', () => {
 		}
 	});
 
-	it('flags METADATA_SUSPECT when date-only metadata conflicts with a precise folder timestamp', () => {
+	it('does not flag METADATA_SUSPECT from folder alone (folder dates do not produce findings)', () => {
 		const finding = classify({
 			path: '/photos/2021-05-16 082026/IMG_1.jpg',
 			metadataDate: date(2020, 10, 18),
@@ -127,10 +144,10 @@ describe('classify', () => {
 			filenameDate: null,
 			folderDate: dateTime(2021, 5, 16, 8, 20, 26),
 		});
-		expect(finding.kind).toBe('METADATA_SUSPECT');
+		expect(finding.kind).toBe('MISSING_DATE');
 	});
 
-	it('keeps WRONG_DATE when date-only metadata conflicts only with day-granularity sources', () => {
+	it('does not flag WRONG_DATE for date-only metadata when only folder disagrees', () => {
 		const finding = classify({
 			path: '/photos/2019-01-01 Party/IMG_1.jpg',
 			metadataDate: date(2020, 10, 18),
@@ -138,7 +155,7 @@ describe('classify', () => {
 			filenameDate: null,
 			folderDate: date(2019, 1, 1),
 		});
-		expect(finding.kind).toBe('WRONG_DATE');
+		expect(finding.kind).toBe('MISSING_DATE');
 	});
 
 	it('keeps WRONG_DATE when high-confidence metadata conflicts with a precise filename time', () => {

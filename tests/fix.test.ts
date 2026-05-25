@@ -1,13 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import type {DateParts} from '../src/dateParts.ts';
-import {collisionsIn, folderConsensus, formatUndoLogEntry} from '../src/fix.ts';
-
-const dateOnly = (year: number, month: number, day: number): DateParts => ({
-	year,
-	month,
-	day,
-	time: null,
-});
+import {collisionsIn, formatUndoLogEntry} from '../src/fix.ts';
 
 describe('collisionsIn', () => {
 	it('returns an empty set when every target is unique', () => {
@@ -35,51 +27,6 @@ describe('collisionsIn', () => {
 			{from: '/a/4.jpg', to: '/a/y.jpg'},
 		]);
 		expect(collisions).toEqual(new Set(['/a/x.jpg', '/a/y.jpg']));
-	});
-});
-
-describe('folderConsensus', () => {
-	it('returns the unanimous date when every file agrees', () => {
-		const consensus = folderConsensus([
-			dateOnly(2020, 10, 18),
-			dateOnly(2020, 10, 18),
-			dateOnly(2020, 10, 18),
-			dateOnly(2020, 10, 18),
-			dateOnly(2020, 10, 18),
-			dateOnly(2020, 10, 18),
-		]);
-		expect(consensus).toEqual({date: dateOnly(2020, 10, 18), agreeing: 6, total: 6});
-	});
-
-	it('returns the majority date when it clears the threshold', () => {
-		const consensus = folderConsensus([
-			dateOnly(2020, 10, 18),
-			dateOnly(2020, 10, 18),
-			dateOnly(2020, 10, 18),
-			dateOnly(2020, 10, 18),
-			dateOnly(2020, 10, 19),
-		]);
-		expect(consensus).toEqual({date: dateOnly(2020, 10, 18), agreeing: 4, total: 5});
-	});
-
-	it('returns null when no date clears the threshold', () => {
-		const consensus = folderConsensus([
-			dateOnly(2020, 10, 18),
-			dateOnly(2020, 10, 18),
-			dateOnly(2020, 10, 19),
-			dateOnly(2020, 10, 20),
-		]);
-		expect(consensus).toBeNull();
-	});
-
-	it('returns null for an empty list', () => {
-		expect(folderConsensus([])).toBeNull();
-	});
-
-	it('respects a custom threshold', () => {
-		const dates = [dateOnly(2020, 10, 18), dateOnly(2020, 10, 18), dateOnly(2020, 10, 19)];
-		expect(folderConsensus(dates, 0.5)).toEqual({date: dateOnly(2020, 10, 18), agreeing: 2, total: 3});
-		expect(folderConsensus(dates, 0.9)).toBeNull();
 	});
 });
 
