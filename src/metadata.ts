@@ -254,18 +254,6 @@ function isEditingSoftware(software: string): boolean {
 }
 
 /**
- * True when none of the capture date tags ({@link DATE_TAGS}) yielded a date.
- */
-function hasNoCaptureDate(tags: Tags, homeZone: string): boolean {
-	for (const tag of DATE_TAGS) {
-		if (toLocalDateParts(tags[tag], homeZone) !== null) {
-			return false;
-		}
-	}
-	return true;
-}
-
-/**
  * Earliest and latest local-wall-clock dates derived from edit-session tags:
  * `ModifyDate`, `MetadataDate`, and every `History[].When`. Returns null when
  * no usable edit date is present.
@@ -292,26 +280,19 @@ function editDateRange(tags: Tags, homeZone: string): {firstEdit: DateParts; las
 }
 
 /**
- * Order DateParts chronologically. Treats a missing time component as 00:00:00
- * so date-only and timestamped values compare consistently.
+ * Order DateParts chronologically. Treats a missing day or time component as
+ * 0 so date-only and timestamped values compare consistently.
  */
 function compareDateParts(left: DateParts, right: DateParts): number {
-	if (left.year !== right.year) return left.year - right.year;
-	const leftMonth = left.month ?? 0;
-	const rightMonth = right.month ?? 0;
-	if (leftMonth !== rightMonth) return leftMonth - rightMonth;
-	const leftDay = left.day ?? 0;
-	const rightDay = right.day ?? 0;
-	if (leftDay !== rightDay) return leftDay - rightDay;
-	const leftHour = left.time?.hour ?? 0;
-	const rightHour = right.time?.hour ?? 0;
-	if (leftHour !== rightHour) return leftHour - rightHour;
-	const leftMinute = left.time?.minute ?? 0;
-	const rightMinute = right.time?.minute ?? 0;
-	if (leftMinute !== rightMinute) return leftMinute - rightMinute;
-	const leftSecond = left.time?.second ?? 0;
-	const rightSecond = right.time?.second ?? 0;
-	return leftSecond - rightSecond;
+	const cmp = (a: number, b: number): number | null => (a === b ? null : a - b);
+	return (
+		cmp(left.year, right.year) ??
+		cmp(left.month, right.month) ??
+		cmp(left.day ?? 0, right.day ?? 0) ??
+		cmp(left.time?.hour ?? 0, right.time?.hour ?? 0) ??
+		cmp(left.time?.minute ?? 0, right.time?.minute ?? 0) ??
+		(left.time?.second ?? 0) - (right.time?.second ?? 0)
+	);
 }
 
 /**
@@ -331,9 +312,6 @@ export function extractDateOrEdit(tags: Tags, homeZone: string): DateOrEdit | nu
 	const capture = extractMetadataDate(tags, homeZone);
 	if (capture !== null) {
 		return {kind: 'capture', metadata: capture};
-	}
-	if (!hasNoCaptureDate(tags, homeZone)) {
-		return null;
 	}
 	const software = softwareString(tags);
 	if (software === null || !isEditingSoftware(software)) {
