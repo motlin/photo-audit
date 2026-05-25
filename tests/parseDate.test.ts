@@ -47,6 +47,15 @@ describe('parseDateFromString', () => {
 		});
 	});
 
+	it('parses an ISO date with dot-separated time and sub-second .SSS suffix', () => {
+		expect(parseDateFromString('2021-04-24 04.50.29.123 burst.jpg')).toEqual({
+			year: 2021,
+			month: 4,
+			day: 24,
+			time: {hour: 4, minute: 50, second: 29, millisecond: 123},
+		});
+	});
+
 	it('parses a month-precision YYYY-MM folder', () => {
 		expect(parseDateFromString('2022-06 Nadia Photo Shoot')).toEqual({
 			year: 2022,

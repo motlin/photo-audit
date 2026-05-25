@@ -3,8 +3,11 @@ import type {DateParts} from './dateParts.ts';
 const MIN_YEAR = 1990;
 const MAX_YEAR = 2099;
 
-/** ISO calendar date, optionally followed by a time (`153044`, `17-18-14`, `17.18.14`, `17:18:14`). */
-const ISO_DATE = /(?<!\d)(\d{4})-(\d{2})-(\d{2})(?:[ _T-]+(\d{2})[-:.]?(\d{2})[-:.]?(\d{2}))?/g;
+/**
+ * ISO calendar date, optionally followed by a time (`153044`, `17-18-14`,
+ * `17.18.14`, `17:18:14`) and optionally a `.SSS` sub-second suffix.
+ */
+const ISO_DATE = /(?<!\d)(\d{4})-(\d{2})-(\d{2})(?:[ _T-]+(\d{2})[-:.]?(\d{2})[-:.]?(\d{2})(?:\.(\d{3}))?)?/g;
 
 /** Compact `YYYYMMDD` run, optionally followed by `HHMMSS` (Android/camera naming). */
 const COMPACT = /(?<!\d)(\d{4})(\d{2})(\d{2})(?:[ _T.-]?(\d{2})(\d{2})(\d{2}))?(?!\d)/g;
@@ -32,10 +35,15 @@ function isValid(date: DateParts): boolean {
 }
 
 function buildWithOptionalTime(match: RegExpMatchArray, day: number | null): DateParts {
-	const [, year, month, , hour, minute, second] = match;
+	const [, year, month, , hour, minute, second, millisecond] = match;
 	const time =
 		hour !== undefined && minute !== undefined && second !== undefined
-			? {hour: Number(hour), minute: Number(minute), second: Number(second)}
+			? {
+					hour: Number(hour),
+					minute: Number(minute),
+					second: Number(second),
+					...(millisecond !== undefined && {millisecond: Number(millisecond)}),
+				}
 			: null;
 	return {year: Number(year), month: Number(month), day, time};
 }

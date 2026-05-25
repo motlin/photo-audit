@@ -23,6 +23,21 @@ const dateOnly = (year: number, month: number, day: number): DateParts => ({
 	time: null,
 });
 
+const dateTimeMs = (
+	year: number,
+	month: number,
+	day: number,
+	hour: number,
+	minute: number,
+	second: number,
+	millisecond: number,
+): DateParts => ({
+	year,
+	month,
+	day,
+	time: {hour, minute, second, millisecond},
+});
+
 describe('proposeFilename', () => {
 	it('prepends date and time to an unlabeled file', () => {
 		expect(proposeFilename('ZinaBolotnovaPhotography-11.jpg', dateTime(2021, 4, 24, 4, 50, 29))).toBe(
@@ -62,5 +77,19 @@ describe('proposeFilename', () => {
 
 	it('falls back to date only when metadata carries no time', () => {
 		expect(proposeFilename('scan.jpg', dateOnly(2010, 3, 3))).toBe('2010-03-03 scan.jpg');
+	});
+
+	it('uses sub-second precision to keep burst-mode frames distinct', () => {
+		const first = proposeFilename('IMG_0001.jpg', dateTimeMs(2024, 7, 4, 12, 0, 0, 123));
+		const second = proposeFilename('IMG_0002.jpg', dateTimeMs(2024, 7, 4, 12, 0, 0, 456));
+		expect(first).toBe('2024-07-04 12.00.00.123 IMG_0001.jpg');
+		expect(second).toBe('2024-07-04 12.00.00.456 IMG_0002.jpg');
+		expect(first).not.toBe(second);
+	});
+
+	it('replaces a leading date that already carries .SSS sub-seconds', () => {
+		expect(proposeFilename('2024-10-11 15.30.44.999 iMazing.MOV', dateTimeMs(2023, 5, 26, 18, 29, 41, 250))).toBe(
+			'2023-05-26 18.29.41.250 iMazing.MOV',
+		);
 	});
 });

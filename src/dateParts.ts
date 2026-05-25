@@ -3,12 +3,15 @@
  *
  * `day` is null for month-precision sources like a "2022-06 Nadia Shoot" folder.
  * `time` is null when only a calendar date was available.
+ * `time.millisecond` is set when the source carried sub-second precision
+ * (e.g. `SubSecDateTimeOriginal`); used to keep burst-mode frames distinct
+ * when generating proposed filenames.
  */
 export interface DateParts {
 	year: number;
 	month: number;
 	day: number | null;
-	time: {hour: number; minute: number; second: number} | null;
+	time: {hour: number; minute: number; second: number; millisecond?: number} | null;
 }
 
 export type DatePrecision = 'month' | 'day';
@@ -37,6 +40,8 @@ export function formatDate(date: DateParts): string {
 	if (date.time === null) {
 		return ymd;
 	}
-	const {hour, minute, second} = date.time;
-	return `${ymd} ${pad(hour)}.${pad(minute)}.${pad(second)}`;
+	const {hour, minute, second, millisecond} = date.time;
+	const hms = `${pad(hour)}.${pad(minute)}.${pad(second)}`;
+	const ms = millisecond === undefined ? '' : `.${pad(millisecond, 3)}`;
+	return `${ymd} ${hms}${ms}`;
 }

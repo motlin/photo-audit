@@ -49,7 +49,12 @@ function partsFromExifDateTime(value: ExifDateTime): DateParts {
 		year: value.year,
 		month: value.month,
 		day: value.day,
-		time: {hour: value.hour, minute: value.minute, second: value.second},
+		time: {
+			hour: value.hour,
+			minute: value.minute,
+			second: value.second,
+			...(value.millisecond !== undefined && {millisecond: value.millisecond}),
+		},
 	};
 }
 
