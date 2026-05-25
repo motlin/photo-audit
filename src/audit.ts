@@ -10,11 +10,20 @@ import {parseDateFromString} from './parseDate.ts';
  * immediate parent upward and stopping at `root`.
  */
 export function folderDateFor(filePath: string, root: string): DateParts | null {
+	const dir = datedAncestorFolder(filePath, root);
+	return dir === null ? null : parseDateFromString(basename(dir));
+}
+
+/**
+ * Absolute path of the nearest ancestor folder whose basename parses as a
+ * date, searching from the file's immediate parent upward and stopping at
+ * `root`. Returns null when no ancestor folder is dated.
+ */
+export function datedAncestorFolder(filePath: string, root: string): string | null {
 	let dir = dirname(filePath);
 	for (;;) {
-		const parsed = parseDateFromString(basename(dir));
-		if (parsed !== null) {
-			return parsed;
+		if (parseDateFromString(basename(dir)) !== null) {
+			return dir;
 		}
 		if (dir === root) {
 			return null;

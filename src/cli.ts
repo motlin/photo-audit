@@ -2,11 +2,12 @@ import {appendFile, access, rename} from 'node:fs/promises';
 import {basename, dirname, join, relative, resolve} from 'node:path';
 import {parseArgs} from 'node:util';
 import {ExifTool} from 'exiftool-vendored';
-import {auditFile} from './audit.ts';
+import {auditFile, datedAncestorFolder} from './audit.ts';
 import type {Finding} from './classify.ts';
-import {formatDate} from './dateParts.ts';
-import {collisionsIn, formatUndoLogEntry, type ProposedRename} from './fix.ts';
-import {proposeFilename} from './proposeName.ts';
+import {datesAgree, formatDate, type DateParts} from './dateParts.ts';
+import {collisionsIn, folderConsensus, formatUndoLogEntry, type ProposedRename} from './fix.ts';
+import {parseDateFromString} from './parseDate.ts';
+import {proposeFilename, proposeFolderName} from './proposeName.ts';
 import {walkMedia} from './walk.ts';
 
 const USAGE = `Usage: just audit "<directory>" [--limit N] [--show-all] [--zone IANA] [--fix] [--help]
@@ -36,7 +37,7 @@ function printWrongDate(finding: Extract<Finding, {kind: 'WRONG_DATE'}>, root: s
 		console.log(`  rename to : ${proposeFilename(name, finding.metadataDate)}`);
 	}
 	if (finding.conflicts.some((conflict) => conflict.source === 'folder')) {
-		console.log(`  folder    : should be dated ${formatDate({...finding.metadataDate, time: null})}`);
+		console.log(`  folder    : disagrees (grouped folder-rename report follows)`);
 	}
 }
 
@@ -59,6 +60,117 @@ async function pathExists(path: string): Promise<boolean> {
 		return true;
 	} catch {
 		return false;
+	}
+}
+
+interface FolderRenameProposal {
+	folderPath: string;
+	folderDate: DateParts;
+	consensusDate: DateParts;
+	agreeing: number;
+	total: number;
+	proposedName: string;
+}
+
+interface FolderRefusal {
+	folderPath: string;
+	folderDate: DateParts;
+	files: {path: string; metadataDate: DateParts}[];
+}
+
+/**
+ * Group folder-conflict WRONG_DATE findings by their nearest dated ancestor
+ * folder, then split into proposals (the folder's files agree on a single
+ * different date) and refusals (the files disagree below threshold).
+ */
+function planFolderRenames(
+	findings: readonly Extract<Finding, {kind: 'WRONG_DATE'}>[],
+	root: string,
+): {proposals: FolderRenameProposal[]; refusals: FolderRefusal[]} {
+	const groups = new Map<string, Extract<Finding, {kind: 'WRONG_DATE'}>[]>();
+	for (const finding of findings) {
+		const hasFolderConflict = finding.conflicts.some((conflict) => conflict.source === 'folder');
+		if (!hasFolderConflict) {
+			continue;
+		}
+		const folderPath = datedAncestorFolder(finding.path, root);
+		if (folderPath === null) {
+			continue;
+		}
+		const bucket = groups.get(folderPath);
+		if (bucket === undefined) {
+			groups.set(folderPath, [finding]);
+		} else {
+			bucket.push(finding);
+		}
+	}
+
+	const proposals: FolderRenameProposal[] = [];
+	const refusals: FolderRefusal[] = [];
+	for (const [folderPath, members] of groups) {
+		const folderDate = parseDateFromString(basename(folderPath));
+		if (folderDate === null) {
+			continue;
+		}
+		const consensus = folderConsensus(members.map((finding) => finding.metadataDate));
+		if (consensus === null || datesAgree(consensus.date, folderDate)) {
+			refusals.push({
+				folderPath,
+				folderDate,
+				files: members.map((finding) => ({path: finding.path, metadataDate: finding.metadataDate})),
+			});
+			continue;
+		}
+		proposals.push({
+			folderPath,
+			folderDate,
+			consensusDate: consensus.date,
+			agreeing: consensus.agreeing,
+			total: consensus.total,
+			proposedName: proposeFolderName(basename(folderPath), consensus.date),
+		});
+	}
+	return {proposals, refusals};
+}
+
+function printFolderRenames(
+	{proposals, refusals}: {proposals: FolderRenameProposal[]; refusals: FolderRefusal[]},
+	root: string,
+): void {
+	for (const proposal of proposals) {
+		console.log(`\nFOLDER RENAME  ${relative(root, proposal.folderPath)}`);
+		console.log(`  current   : ${formatDate(proposal.folderDate)}`);
+		console.log(
+			`  consensus : ${formatDate(proposal.consensusDate)}  (${proposal.agreeing}/${proposal.total} files)`,
+		);
+		console.log(`  rename to : ${proposal.proposedName}`);
+	}
+	for (const refusal of refusals) {
+		console.log(`\nFOLDER DISAGREEMENT  ${relative(root, refusal.folderPath)}`);
+		console.log(`  current   : ${formatDate(refusal.folderDate)}`);
+		console.log(`  files disagree below 80% threshold; per-file report:`);
+		for (const file of refusal.files) {
+			console.log(`    ${relative(root, file.path)}  -> ${formatDate(file.metadataDate)}`);
+		}
+	}
+}
+
+/**
+ * Apply folder renames to disk. Logs every rename to the shared undo log and
+ * skips any folder whose target already exists.
+ */
+async function applyFolderRenames(proposals: readonly FolderRenameProposal[], root: string): Promise<void> {
+	const undoLogPath = join(root, UNDO_LOG_NAME);
+	for (const proposal of proposals) {
+		const to = join(dirname(proposal.folderPath), proposal.proposedName);
+		if (await pathExists(to)) {
+			console.log(`SKIPPED FOLDER (target exists): ${proposal.folderPath} -> ${to}`);
+			continue;
+		}
+		await rename(proposal.folderPath, to);
+		const entry = formatUndoLogEntry({timestamp: new Date().toISOString(), from: proposal.folderPath, to});
+		await appendFile(undoLogPath, entry);
+		console.log(`RENAMED FOLDER ${proposal.folderPath} -> ${to}`);
 	}
 }
 
@@ -171,10 +283,22 @@ async function main(): Promise<void> {
 		await exiftool.end();
 	}
 
+	const folderPlan = planFolderRenames(wrongDateFindings, root);
+	if (folderPlan.proposals.length > 0 || folderPlan.refusals.length > 0) {
+		console.log(`\n${'-'.repeat(48)}`);
+		console.log('Folder rename proposals');
+		printFolderRenames(folderPlan, root);
+	}
+
 	if (values.fix && wrongDateFindings.length > 0) {
 		console.log(`\n${'-'.repeat(48)}`);
-		console.log('Applying --fix renames');
+		console.log('Applying --fix file renames');
 		await applyFixes(wrongDateFindings, root);
+	}
+	if (values.fix && folderPlan.proposals.length > 0) {
+		console.log(`\n${'-'.repeat(48)}`);
+		console.log('Applying --fix folder renames');
+		await applyFolderRenames(folderPlan.proposals, root);
 	}
 
 	console.log(`\n${'='.repeat(48)}`);
