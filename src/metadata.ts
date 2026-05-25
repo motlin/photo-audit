@@ -136,16 +136,14 @@ export function extractMetadataDate(tags: Tags, homeZone: string): MetadataDate 
 		date: DateParts;
 		tag: (typeof DATE_TAGS)[number];
 		raw: unknown;
-		priority: number;
 	};
 
 	const candidates: Candidate[] = [];
-	for (let priority = 0; priority < DATE_TAGS.length; priority++) {
-		const tag = DATE_TAGS[priority]!;
+	for (const tag of DATE_TAGS) {
 		const raw = tags[tag];
 		const date = toLocalDateParts(raw, homeZone);
 		if (date !== null) {
-			candidates.push({date, tag, raw, priority});
+			candidates.push({date, tag, raw});
 		}
 	}
 
@@ -153,18 +151,16 @@ export function extractMetadataDate(tags: Tags, homeZone: string): MetadataDate 
 		return null;
 	}
 
+	// `candidates` is already in DATE_TAGS order, so the reduce keeps the
+	// earlier-listed tag whenever the time-then-zone scores tie.
 	const best = candidates.reduce((winner, current) => {
-		const winnerTime = hasRealTime(winner.raw);
-		const currentTime = hasRealTime(current.raw);
-		if (currentTime !== winnerTime) {
-			return currentTime ? current : winner;
+		if (hasRealTime(current.raw) !== hasRealTime(winner.raw)) {
+			return hasRealTime(current.raw) ? current : winner;
 		}
-		const winnerZone = hasRealZone(winner.raw);
-		const currentZone = hasRealZone(current.raw);
-		if (currentZone !== winnerZone) {
-			return currentZone ? current : winner;
+		if (hasRealZone(current.raw) !== hasRealZone(winner.raw)) {
+			return hasRealZone(current.raw) ? current : winner;
 		}
-		return current.priority < winner.priority ? current : winner;
+		return winner;
 	});
 
 	return {date: best.date, tag: best.tag, confidence: confidenceOf(best.raw)};
