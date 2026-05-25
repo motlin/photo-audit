@@ -39,6 +39,7 @@ export async function auditFile(exiftool: ExifTool, path: string, root: string, 
 	return classify({
 		path,
 		metadataDate: metadata?.date ?? null,
+		metadataConfidence: metadata?.confidence ?? 'high',
 		filenameDate: parseDateFromString(basename(path)),
 		folderDate: folderDateFor(path, root),
 	});

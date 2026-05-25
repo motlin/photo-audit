@@ -9,6 +9,20 @@ const date = (year: number, month: number, day: number | null): DateParts => ({
 	time: null,
 });
 
+const dateTime = (
+	year: number,
+	month: number,
+	day: number,
+	hour: number,
+	minute: number,
+	second: number,
+): DateParts => ({
+	year,
+	month,
+	day,
+	time: {hour, minute, second},
+});
+
 describe('classify', () => {
 	it('flags WRONG_DATE when the filename date disagrees with metadata', () => {
 		const finding = classify({
@@ -87,5 +101,54 @@ describe('classify', () => {
 		if (finding.kind === 'WRONG_DATE') {
 			expect(finding.conflicts).toHaveLength(2);
 		}
+	});
+
+	it('flags METADATA_SUSPECT when date-only metadata conflicts with a precise filename timestamp', () => {
+		const finding = classify({
+			path: '/CyanPhotos/iMazing/2021-05-16 082026 iMazing.JPG',
+			metadataDate: date(2021, 4, 12),
+			metadataConfidence: 'date-only',
+			filenameDate: dateTime(2021, 5, 16, 8, 20, 26),
+			folderDate: null,
+		});
+		expect(finding.kind).toBe('METADATA_SUSPECT');
+		if (finding.kind === 'METADATA_SUSPECT') {
+			expect(finding.metadataDate).toEqual(date(2021, 4, 12));
+			expect(finding.filenameDate).toEqual(dateTime(2021, 5, 16, 8, 20, 26));
+			expect(finding.folderDate).toBeNull();
+		}
+	});
+
+	it('flags METADATA_SUSPECT when date-only metadata conflicts with a precise folder timestamp', () => {
+		const finding = classify({
+			path: '/photos/2021-05-16 082026/IMG_1.jpg',
+			metadataDate: date(2020, 10, 18),
+			metadataConfidence: 'date-only',
+			filenameDate: null,
+			folderDate: dateTime(2021, 5, 16, 8, 20, 26),
+		});
+		expect(finding.kind).toBe('METADATA_SUSPECT');
+	});
+
+	it('keeps WRONG_DATE when date-only metadata conflicts only with day-granularity sources', () => {
+		const finding = classify({
+			path: '/photos/2019-01-01 Party/IMG_1.jpg',
+			metadataDate: date(2020, 10, 18),
+			metadataConfidence: 'date-only',
+			filenameDate: null,
+			folderDate: date(2019, 1, 1),
+		});
+		expect(finding.kind).toBe('WRONG_DATE');
+	});
+
+	it('keeps WRONG_DATE when high-confidence metadata conflicts with a precise filename time', () => {
+		const finding = classify({
+			path: '/photos/2024-10-11 153044 iMazing.MOV',
+			metadataDate: dateTime(2023, 5, 26, 18, 29, 41),
+			metadataConfidence: 'high',
+			filenameDate: dateTime(2024, 10, 11, 15, 30, 44),
+			folderDate: null,
+		});
+		expect(finding.kind).toBe('WRONG_DATE');
 	});
 });

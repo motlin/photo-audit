@@ -40,6 +40,13 @@ function printMissingDate(finding: Extract<Finding, {kind: 'MISSING_DATE'}>, roo
 	console.log(`  rename to : ${proposeFilename(basename(finding.path), finding.metadataDate)}`);
 }
 
+function printMetadataSuspect(finding: Extract<Finding, {kind: 'METADATA_SUSPECT'}>, root: string): void {
+	console.log(`\nMETADATA SUSPECT  ${relative(root, finding.path)}`);
+	console.log(`  metadata  : ${formatDate(finding.metadataDate)}  <- date-only / low-confidence`);
+	console.log(`  filename  : ${finding.filenameDate === null ? '-' : formatDate(finding.filenameDate)}`);
+	console.log(`  folder    : ${finding.folderDate === null ? '-' : formatDate(finding.folderDate)}`);
+}
+
 async function main(): Promise<void> {
 	const {values, positionals} = parseArgs({
 		allowPositionals: true,
@@ -69,6 +76,7 @@ async function main(): Promise<void> {
 	const counts: Record<Finding['kind'], number> = {
 		CONSISTENT: 0,
 		WRONG_DATE: 0,
+		METADATA_SUSPECT: 0,
 		MISSING_DATE: 0,
 		NO_METADATA_DATE: 0,
 	};
@@ -86,6 +94,8 @@ async function main(): Promise<void> {
 
 			if (finding.kind === 'WRONG_DATE') {
 				printWrongDate(finding, root);
+			} else if (finding.kind === 'METADATA_SUSPECT') {
+				printMetadataSuspect(finding, root);
 			} else if (finding.kind === 'MISSING_DATE' && values['show-all']) {
 				printMissingDate(finding, root);
 			} else if (finding.kind === 'NO_METADATA_DATE' && values['show-all']) {
@@ -104,6 +114,7 @@ async function main(): Promise<void> {
 	console.log(`Scanned ${scanned} files under ${root}`);
 	console.log(`Home timezone for UTC-only video dates: ${homeZone}`);
 	console.log(`  WRONG_DATE       ${counts.WRONG_DATE}`);
+	console.log(`  METADATA_SUSPECT ${counts.METADATA_SUSPECT}`);
 	console.log(`  MISSING_DATE     ${counts.MISSING_DATE}`);
 	console.log(`  NO_METADATA_DATE ${counts.NO_METADATA_DATE}`);
 	console.log(`  CONSISTENT       ${counts.CONSISTENT}`);

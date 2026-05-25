@@ -1,6 +1,6 @@
-import {ExifDate, ExifDateTime} from 'exiftool-vendored';
+import {ExifDate, ExifDateTime, type Tags} from 'exiftool-vendored';
 import {describe, expect, it} from 'vitest';
-import {toLocalDateParts} from '../src/metadata.ts';
+import {extractMetadataDate, toLocalDateParts} from '../src/metadata.ts';
 
 // ExifDateTime constructor:
 //   year, month, day, hour, minute, second, millisecond?, tzoffsetMinutes?,
@@ -91,5 +91,42 @@ describe('toLocalDateParts', () => {
 	it('returns null for non-date values', () => {
 		expect(toLocalDateParts(undefined, 'America/New_York')).toBeNull();
 		expect(toLocalDateParts('2020:01:01', 'America/New_York')).toBeNull();
+	});
+});
+
+describe('extractMetadataDate confidence', () => {
+	it("flags a midnight ExifDateTime as 'date-only' low confidence", () => {
+		const midnight = new ExifDateTime(2020, 10, 18, 0, 0, 0, undefined, 0, '2020-10-18T00:00:00Z', 'UTC', false);
+		const tags = {DateTimeOriginal: midnight} as unknown as Tags;
+		const result = extractMetadataDate(tags, 'America/New_York');
+		expect(result).not.toBeNull();
+		expect(result?.confidence).toBe('date-only');
+	});
+
+	it("flags an ExifDate (no time component) as 'date-only' low confidence", () => {
+		const tags = {DateTimeOriginal: new ExifDate(2021, 4, 12)} as unknown as Tags;
+		const result = extractMetadataDate(tags, 'America/New_York');
+		expect(result).not.toBeNull();
+		expect(result?.confidence).toBe('date-only');
+	});
+
+	it("flags an ExifDateTime with a real wall-clock time as 'high' confidence", () => {
+		const wallClock = new ExifDateTime(
+			2023,
+			5,
+			26,
+			18,
+			29,
+			41,
+			undefined,
+			-240,
+			'2023:05:26 18:29:41-04:00',
+			'UTC-4',
+			false,
+		);
+		const tags = {DateTimeOriginal: wallClock} as unknown as Tags;
+		const result = extractMetadataDate(tags, 'America/New_York');
+		expect(result).not.toBeNull();
+		expect(result?.confidence).toBe('high');
 	});
 });

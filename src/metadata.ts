@@ -64,10 +64,39 @@ export function toLocalDateParts(value: unknown, homeZone: string): DateParts | 
 	return null;
 }
 
+/**
+ * How much we trust the wall-clock portion of a metadata date.
+ *
+ * `date-only` means the source had no real time component — either an `ExifDate`
+ * value, or an `ExifDateTime` stamped at exactly 00:00:00 (a "date-only"
+ * sentinel that some software writes when only the calendar day is known).
+ * `high` means a real wall-clock time was recorded.
+ */
+export type MetadataConfidence = 'high' | 'date-only';
+
 export interface MetadataDate {
 	date: DateParts;
 	/** Which metadata tag the date came from. */
 	tag: string;
+	confidence: MetadataConfidence;
+}
+
+/**
+ * True when this `ExifDateTime` looks like a date-only sentinel rather than a
+ * captured wall-clock time: midnight to the second.
+ */
+function isMidnightExifDateTime(value: ExifDateTime): boolean {
+	return value.hour === 0 && value.minute === 0 && value.second === 0;
+}
+
+function confidenceOf(value: unknown): MetadataConfidence {
+	if (value instanceof ExifDate) {
+		return 'date-only';
+	}
+	if (value instanceof ExifDateTime && isMidnightExifDateTime(value)) {
+		return 'date-only';
+	}
+	return 'high';
 }
 
 /**
@@ -76,9 +105,10 @@ export interface MetadataDate {
  */
 export function extractMetadataDate(tags: Tags, homeZone: string): MetadataDate | null {
 	for (const tag of DATE_TAGS) {
-		const date = toLocalDateParts(tags[tag], homeZone);
+		const raw = tags[tag];
+		const date = toLocalDateParts(raw, homeZone);
 		if (date !== null) {
-			return {date, tag};
+			return {date, tag, confidence: confidenceOf(raw)};
 		}
 	}
 	return null;
