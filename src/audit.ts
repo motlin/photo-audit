@@ -3,7 +3,7 @@ import type {ExifTool} from 'exiftool-vendored';
 import {classify, type Finding} from './classify.ts';
 import type {DateParts} from './dateParts.ts';
 import {formatPlaceFromTags} from './geocode.ts';
-import {extractMetadataDate} from './metadata.ts';
+import {extractDateOrEdit} from './metadata.ts';
 import {parseDateFromString} from './parseDate.ts';
 
 /**
@@ -62,11 +62,20 @@ export async function auditFile(
 	homeZone: string,
 ): Promise<AuditResult> {
 	const tags = await exiftool.read(path);
-	const metadata = extractMetadataDate(tags, homeZone);
+	const dateOrEdit = extractDateOrEdit(tags, homeZone);
 	const finding = classify({
 		path,
-		metadataDate: metadata?.date ?? null,
-		metadataConfidence: metadata?.confidence ?? 'high',
+		metadataDate: dateOrEdit?.kind === 'capture' ? dateOrEdit.metadata.date : null,
+		metadataConfidence: dateOrEdit?.kind === 'capture' ? dateOrEdit.metadata.confidence : 'high',
+		...(dateOrEdit?.kind === 'edit-derived'
+			? {
+					editDerived: {
+						firstEdit: dateOrEdit.firstEdit,
+						lastEdit: dateOrEdit.lastEdit,
+						software: dateOrEdit.software,
+					},
+				}
+			: {}),
 		filenameDate: parseDateFromString(basename(path)),
 		folderDate: folderDateFor(path, root),
 	});

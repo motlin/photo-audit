@@ -1,5 +1,5 @@
 import {datesAgree, type DateParts} from './dateParts.ts';
-import type {MetadataConfidence} from './metadata.ts';
+import type {EditDerivedDate, MetadataConfidence} from './metadata.ts';
 
 export interface AuditInput {
 	path: string;
@@ -10,6 +10,13 @@ export interface AuditInput {
 	 * for callers that have no opinion (e.g. existing tests).
 	 */
 	metadataConfidence?: MetadataConfidence;
+	/**
+	 * Set when the file has no capture-date tag but does have edit-session
+	 * timestamps stamped by recognized editing software (Photoshop, Lightroom,
+	 * GIMP, Affinity, Topaz). When present, this short-circuits the audit
+	 * since neither value is a real capture moment.
+	 */
+	editDerived?: EditDerivedDate;
 	/** Date parsed from the filename, or null. */
 	filenameDate: DateParts | null;
 	/** Date parsed from the nearest dated ancestor folder, or null. */
@@ -48,12 +55,29 @@ export type Finding =
 			filenameDate: DateParts | null;
 			folderDate: DateParts | null;
 	  }
+	| {
+			kind: 'EDIT_DERIVED';
+			path: string;
+			firstEdit: DateParts;
+			lastEdit: DateParts;
+			software: string;
+	  }
 	| {kind: 'MISSING_DATE'; path: string; metadataDate: DateParts}
 	| {kind: 'NO_METADATA_DATE'; path: string};
 
 export function classify(input: AuditInput): Finding {
-	const {path, metadataDate, filenameDate, folderDate} = input;
+	const {path, metadataDate, editDerived, filenameDate, folderDate} = input;
 	const metadataConfidence: MetadataConfidence = input.metadataConfidence ?? 'high';
+
+	if (editDerived !== undefined) {
+		return {
+			kind: 'EDIT_DERIVED',
+			path,
+			firstEdit: editDerived.firstEdit,
+			lastEdit: editDerived.lastEdit,
+			software: editDerived.software,
+		};
+	}
 
 	if (metadataDate === null) {
 		return {kind: 'NO_METADATA_DATE', path};

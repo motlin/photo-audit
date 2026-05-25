@@ -151,4 +151,40 @@ describe('classify', () => {
 		});
 		expect(finding.kind).toBe('WRONG_DATE');
 	});
+
+	it('reports EDIT_DERIVED when the input carries edit-derived dates instead of a capture date', () => {
+		const finding = classify({
+			path: '/CyanPhotos/iMazing/2018-04-21 092845 iMazing.JPG',
+			metadataDate: null,
+			editDerived: {
+				firstEdit: dateTime(2018, 4, 20, 21, 53, 52),
+				lastEdit: dateTime(2018, 4, 21, 9, 28, 45),
+				software: 'Adobe Photoshop CC 2015.5 (Windows)',
+			},
+			filenameDate: dateTime(2018, 4, 21, 9, 28, 45),
+			folderDate: null,
+		});
+		expect(finding.kind).toBe('EDIT_DERIVED');
+		if (finding.kind === 'EDIT_DERIVED') {
+			expect(finding.path).toBe('/CyanPhotos/iMazing/2018-04-21 092845 iMazing.JPG');
+			expect(finding.firstEdit).toEqual(dateTime(2018, 4, 20, 21, 53, 52));
+			expect(finding.lastEdit).toEqual(dateTime(2018, 4, 21, 9, 28, 45));
+			expect(finding.software).toBe('Adobe Photoshop CC 2015.5 (Windows)');
+		}
+	});
+
+	it('EDIT_DERIVED overrides NO_METADATA_DATE even when filenameDate and folderDate are null', () => {
+		const finding = classify({
+			path: '/photos/edited.jpg',
+			metadataDate: null,
+			editDerived: {
+				firstEdit: dateTime(2020, 1, 1, 10, 0, 0),
+				lastEdit: dateTime(2020, 1, 1, 10, 5, 0),
+				software: 'Adobe Lightroom Classic 9.0',
+			},
+			filenameDate: null,
+			folderDate: null,
+		});
+		expect(finding.kind).toBe('EDIT_DERIVED');
+	});
 });

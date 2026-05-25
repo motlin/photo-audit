@@ -71,6 +71,18 @@ function printMetadataSuspect(
 	printLocation(location);
 }
 
+function printEditDerived(
+	finding: Extract<Finding, {kind: 'EDIT_DERIVED'}>,
+	root: string,
+	location: string | null,
+): void {
+	console.log(`\nEDIT DERIVED  ${relative(root, finding.path)}`);
+	console.log(`  no capture date available`);
+	console.log(`  software  : ${finding.software}`);
+	console.log(`  edited    : ${formatDate(finding.firstEdit)} -> ${formatDate(finding.lastEdit)}`);
+	printLocation(location);
+}
+
 async function pathExists(path: string): Promise<boolean> {
 	try {
 		await access(path);
@@ -265,6 +277,7 @@ async function main(): Promise<void> {
 		CONSISTENT: 0,
 		WRONG_DATE: 0,
 		METADATA_SUSPECT: 0,
+		EDIT_DERIVED: 0,
 		MISSING_DATE: 0,
 		NO_METADATA_DATE: 0,
 	};
@@ -286,6 +299,8 @@ async function main(): Promise<void> {
 				wrongDateFindings.push(finding);
 			} else if (finding.kind === 'METADATA_SUSPECT') {
 				printMetadataSuspect(finding, root, location);
+			} else if (finding.kind === 'EDIT_DERIVED') {
+				printEditDerived(finding, root, location);
 			} else if (finding.kind === 'MISSING_DATE' && values['show-all']) {
 				printMissingDate(finding, root, location);
 			} else if (finding.kind === 'NO_METADATA_DATE' && values['show-all']) {
@@ -323,6 +338,7 @@ async function main(): Promise<void> {
 	console.log(`Home timezone for UTC-only video dates: ${homeZone}`);
 	console.log(`  WRONG_DATE       ${counts.WRONG_DATE}`);
 	console.log(`  METADATA_SUSPECT ${counts.METADATA_SUSPECT}`);
+	console.log(`  EDIT_DERIVED     ${counts.EDIT_DERIVED}`);
 	console.log(`  MISSING_DATE     ${counts.MISSING_DATE}`);
 	console.log(`  NO_METADATA_DATE ${counts.NO_METADATA_DATE}`);
 	console.log(`  CONSISTENT       ${counts.CONSISTENT}`);

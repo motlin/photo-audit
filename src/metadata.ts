@@ -2,6 +2,21 @@ import {ExifDate, ExifDateTime, type Tags} from 'exiftool-vendored';
 import type {DateParts} from './dateParts.ts';
 
 /**
+ * Tag names that, when set, indicate the timestamp is from an editing session
+ * rather than the original capture. These are checked alongside the
+ * Software/CreatorTool string to detect Photoshop/Lightroom-style edits.
+ */
+const EDIT_DATE_TAGS = ['ModifyDate', 'MetadataDate'] as const satisfies readonly (keyof Tags)[];
+
+/**
+ * Substrings (case-insensitive) used to recognize editing software in the
+ * Software/CreatorTool/ProcessingSoftware tags. Camera firmware strings (like
+ * "Canon EOS R5 firmware 1.6.0") do not contain any of these, so a plain
+ * camera-firmware ModifyDate is not mistaken for an edit.
+ */
+const EDIT_SOFTWARE_HINTS = ['photoshop', 'lightroom', 'gimp', 'affinity', 'topaz'] as const;
+
+/**
  * Metadata tags holding a capture date, in priority order.
  *
  * `CreationDate` (QuickTime Keys) is timezone-aware and preferred for video.
@@ -164,4 +179,169 @@ export function extractMetadataDate(tags: Tags, homeZone: string): MetadataDate 
 	});
 
 	return {date: best.date, tag: best.tag, confidence: confidenceOf(best.raw)};
+}
+
+/**
+ * Information about a file whose only date metadata comes from an editing
+ * session (Photoshop / Lightroom / GIMP / Affinity / Topaz). The dates here
+ * are NOT capture times — they are when the file was saved during editing.
+ */
+export interface EditDerivedDate {
+	firstEdit: DateParts;
+	lastEdit: DateParts;
+	software: string;
+}
+
+/**
+ * Combined result of {@link extractDateOrEdit}: either the file has a real
+ * capture date, or it is edit-derived (no capture tags, only edit timestamps
+ * stamped by recognized editing software).
+ */
+export type DateOrEdit = {kind: 'capture'; metadata: MetadataDate} | ({kind: 'edit-derived'} & EditDerivedDate);
+
+/**
+ * Pull a `When` ExifDateTime/ExifDate out of a single `ResourceEvent`-shaped
+ * History entry. Returns null when the value cannot be parsed as a date.
+ */
+function historyWhen(entry: unknown): ExifDateTime | ExifDate | null {
+	if (entry === null || typeof entry !== 'object') {
+		return null;
+	}
+	const when = (entry as {When?: unknown}).When;
+	if (when instanceof ExifDateTime || when instanceof ExifDate) {
+		return when;
+	}
+	return null;
+}
+
+/**
+ * Every `When` timestamp found in a `History` value, which may be a single
+ * `ResourceEvent`, an array of them, or a string we can't parse.
+ */
+function historyWhens(history: unknown): (ExifDateTime | ExifDate)[] {
+	if (Array.isArray(history)) {
+		const result: (ExifDateTime | ExifDate)[] = [];
+		for (const entry of history) {
+			const when = historyWhen(entry);
+			if (when !== null) {
+				result.push(when);
+			}
+		}
+		return result;
+	}
+	const when = historyWhen(history);
+	return when === null ? [] : [when];
+}
+
+/**
+ * String from any tag that names the program responsible for the file's
+ * current contents, used both to recognize editing software and to attribute
+ * the edit-derived label. The first non-empty value wins.
+ */
+function softwareString(tags: Tags): string | null {
+	const candidates = [tags.Software, tags.CreatorTool, tags.ProcessingSoftware];
+	for (const candidate of candidates) {
+		if (typeof candidate === 'string' && candidate.length > 0) {
+			return candidate;
+		}
+	}
+	return null;
+}
+
+function isEditingSoftware(software: string): boolean {
+	const lower = software.toLowerCase();
+	return EDIT_SOFTWARE_HINTS.some((hint) => lower.includes(hint));
+}
+
+/**
+ * True when none of the capture date tags ({@link DATE_TAGS}) yielded a date.
+ */
+function hasNoCaptureDate(tags: Tags, homeZone: string): boolean {
+	for (const tag of DATE_TAGS) {
+		if (toLocalDateParts(tags[tag], homeZone) !== null) {
+			return false;
+		}
+	}
+	return true;
+}
+
+/**
+ * Earliest and latest local-wall-clock dates derived from edit-session tags:
+ * `ModifyDate`, `MetadataDate`, and every `History[].When`. Returns null when
+ * no usable edit date is present.
+ */
+function editDateRange(tags: Tags, homeZone: string): {firstEdit: DateParts; lastEdit: DateParts} | null {
+	const dates: DateParts[] = [];
+	for (const tag of EDIT_DATE_TAGS) {
+		const parts = toLocalDateParts(tags[tag], homeZone);
+		if (parts !== null) {
+			dates.push(parts);
+		}
+	}
+	for (const when of historyWhens(tags.History)) {
+		const parts = toLocalDateParts(when, homeZone);
+		if (parts !== null) {
+			dates.push(parts);
+		}
+	}
+	if (dates.length === 0) {
+		return null;
+	}
+	const sorted = [...dates].sort(compareDateParts);
+	return {firstEdit: sorted[0]!, lastEdit: sorted[sorted.length - 1]!};
+}
+
+/**
+ * Order DateParts chronologically. Treats a missing time component as 00:00:00
+ * so date-only and timestamped values compare consistently.
+ */
+function compareDateParts(left: DateParts, right: DateParts): number {
+	if (left.year !== right.year) return left.year - right.year;
+	const leftMonth = left.month ?? 0;
+	const rightMonth = right.month ?? 0;
+	if (leftMonth !== rightMonth) return leftMonth - rightMonth;
+	const leftDay = left.day ?? 0;
+	const rightDay = right.day ?? 0;
+	if (leftDay !== rightDay) return leftDay - rightDay;
+	const leftHour = left.time?.hour ?? 0;
+	const rightHour = right.time?.hour ?? 0;
+	if (leftHour !== rightHour) return leftHour - rightHour;
+	const leftMinute = left.time?.minute ?? 0;
+	const rightMinute = right.time?.minute ?? 0;
+	if (leftMinute !== rightMinute) return leftMinute - rightMinute;
+	const leftSecond = left.time?.second ?? 0;
+	const rightSecond = right.time?.second ?? 0;
+	return leftSecond - rightSecond;
+}
+
+/**
+ * Decide whether a file has a real capture date or only edit-session
+ * timestamps stamped by editing software.
+ *
+ * Returns:
+ *  - `{kind: 'capture', metadata}` when at least one {@link DATE_TAGS} value
+ *    is set; capture always wins, even if Photoshop later resaved the file.
+ *  - `{kind: 'edit-derived', firstEdit, lastEdit, software}` when no capture
+ *    tag is set, an edit timestamp IS set (ModifyDate / MetadataDate / a
+ *    History `When`), and `Software`/`CreatorTool`/`ProcessingSoftware` names
+ *    a recognized editor (Photoshop, Lightroom, GIMP, Affinity, Topaz).
+ *  - `null` otherwise.
+ */
+export function extractDateOrEdit(tags: Tags, homeZone: string): DateOrEdit | null {
+	const capture = extractMetadataDate(tags, homeZone);
+	if (capture !== null) {
+		return {kind: 'capture', metadata: capture};
+	}
+	if (!hasNoCaptureDate(tags, homeZone)) {
+		return null;
+	}
+	const software = softwareString(tags);
+	if (software === null || !isEditingSoftware(software)) {
+		return null;
+	}
+	const range = editDateRange(tags, homeZone);
+	if (range === null) {
+		return null;
+	}
+	return {kind: 'edit-derived', firstEdit: range.firstEdit, lastEdit: range.lastEdit, software};
 }
