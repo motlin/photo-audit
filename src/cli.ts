@@ -35,6 +35,11 @@ metadata against the date in its filename. Folder dates are informational only
                  to skip), then apply with --apply.
   --apply FILE   read a plan from FILE and apply it. Undo log is still
                  written under <directory>.
+  --strip-camera-id
+                 when proposing names, drop camera-firmware stems like
+                 IMG_063842, DSC_1234, PXL_20240315_..., so the new name is
+                 just the date prefix + extension. Human-named stems are
+                 always preserved.
   --undo         read <directory>/photo-audit-renames.log and remove every
                  aliased path still hard-linked to its original. Skips
                  entries where the alias was replaced or the original is
@@ -50,7 +55,12 @@ function printLocation(location: string | null): void {
 	}
 }
 
-function printWrongDate(finding: Extract<Finding, {kind: 'WRONG_DATE'}>, root: string, location: string | null): void {
+function printWrongDate(
+	finding: Extract<Finding, {kind: 'WRONG_DATE'}>,
+	root: string,
+	location: string | null,
+	stripCameraId: boolean,
+): void {
 	const name = basename(finding.path);
 	console.log(`\nWRONG DATE  ${relative(root, finding.path)}`);
 	console.log(`  metadata  : ${formatDate(finding.metadataDate)}`);
@@ -58,18 +68,19 @@ function printWrongDate(finding: Extract<Finding, {kind: 'WRONG_DATE'}>, root: s
 		console.log(`  ${conflict.source.padEnd(10)}: ${formatDate(conflict.found)}  <- disagrees`);
 	}
 	printLocation(location);
-	console.log(`  rename to : ${proposeFilename(name, finding.metadataDate)}`);
+	console.log(`  rename to : ${proposeFilename(name, finding.metadataDate, {stripCameraId})}`);
 }
 
 function printMissingDate(
 	finding: Extract<Finding, {kind: 'MISSING_DATE'}>,
 	root: string,
 	location: string | null,
+	stripCameraId: boolean,
 ): void {
 	console.log(`\nMISSING DATE  ${relative(root, finding.path)}`);
 	console.log(`  computed  : ${formatDate(finding.metadataDate)}`);
 	printLocation(location);
-	console.log(`  rename to : ${proposeFilename(basename(finding.path), finding.metadataDate)}`);
+	console.log(`  rename to : ${proposeFilename(basename(finding.path), finding.metadataDate, {stripCameraId})}`);
 }
 
 function printMetadataSuspect(
@@ -118,7 +129,11 @@ type Fixable = Extract<Finding, {kind: 'WRONG_DATE' | 'MISSING_DATE'}>;
  * those whose metadata is date-only and printing a skip reason for each one
  * held back.
  */
-function planLinksFromFindings(findings: readonly Fixable[], root: string): PlanEntry[] {
+function planLinksFromFindings(
+	findings: readonly Fixable[],
+	root: string,
+	options: {stripCameraId: boolean},
+): PlanEntry[] {
 	const plan: PlanEntry[] = [];
 	for (const finding of findings) {
 		if (finding.metadataConfidence !== 'high') {
@@ -126,7 +141,9 @@ function planLinksFromFindings(findings: readonly Fixable[], root: string): Plan
 			continue;
 		}
 		const dir = dirname(finding.path);
-		const proposed = proposeFilename(basename(finding.path), finding.metadataDate);
+		const proposed = proposeFilename(basename(finding.path), finding.metadataDate, {
+			stripCameraId: options.stripCameraId,
+		});
 		plan.push({from: finding.path, to: join(dir, proposed), kind: finding.kind});
 	}
 	return plan;
@@ -192,6 +209,7 @@ async function main(): Promise<void> {
 			undo: {type: 'boolean', default: false},
 			plan: {type: 'string'},
 			apply: {type: 'string'},
+			'strip-camera-id': {type: 'boolean', default: false},
 			help: {type: 'boolean', short: 'h', default: false},
 		},
 	});
@@ -260,7 +278,7 @@ async function main(): Promise<void> {
 			scanned += 1;
 
 			if (finding.kind === 'WRONG_DATE') {
-				printWrongDate(finding, root, location);
+				printWrongDate(finding, root, location, values['strip-camera-id']);
 				fixableFindings.push(finding);
 			} else if (finding.kind === 'METADATA_SUSPECT') {
 				printMetadataSuspect(finding, root, location);
@@ -269,7 +287,7 @@ async function main(): Promise<void> {
 			} else if (finding.kind === 'MISSING_DATE') {
 				fixableFindings.push(finding);
 				if (values['show-all']) {
-					printMissingDate(finding, root, location);
+					printMissingDate(finding, root, location, values['strip-camera-id']);
 				}
 			} else if (finding.kind === 'NO_METADATA_DATE' && values['show-all']) {
 				console.log(`\nNO METADATA DATE  ${relative(root, finding.path)}`);
@@ -307,7 +325,7 @@ async function main(): Promise<void> {
 
 	if (fixableFindings.length > 0 && (values.fix || values.plan !== undefined)) {
 		console.log(`\n${'-'.repeat(48)}`);
-		const plan = planLinksFromFindings(fixableFindings, root);
+		const plan = planLinksFromFindings(fixableFindings, root, {stripCameraId: values['strip-camera-id']});
 		if (values.plan !== undefined) {
 			await writePlanFile(values.plan, plan);
 			console.log(`Wrote ${plan.length} plan entries to ${values.plan}`);

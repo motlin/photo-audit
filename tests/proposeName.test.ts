@@ -92,4 +92,46 @@ describe('proposeFilename', () => {
 			'2023-05-26 18.29.41.250 iMazing.MOV',
 		);
 	});
+
+	it('strips camera-ID stems like IMG_063842 when stripCameraId is true', () => {
+		expect(proposeFilename('IMG_063842.jpg', dateTimeMs(2024, 1, 2, 7, 25, 16, 395), {stripCameraId: true})).toBe(
+			'2024-01-02 07.25.16.395.jpg',
+		);
+	});
+
+	it('strips DSC_/DSCF/DSCN patterns from Nikon/Sony/Fujifilm cameras', () => {
+		expect(proposeFilename('DSC_1234.JPG', dateTime(2020, 5, 1, 10, 0, 0), {stripCameraId: true})).toBe(
+			'2020-05-01 10.00.00.JPG',
+		);
+		expect(proposeFilename('DSCF0001.JPG', dateTime(2020, 5, 1, 10, 0, 0), {stripCameraId: true})).toBe(
+			'2020-05-01 10.00.00.JPG',
+		);
+		expect(proposeFilename('DSCN9999.JPG', dateTime(2020, 5, 1, 10, 0, 0), {stripCameraId: true})).toBe(
+			'2020-05-01 10.00.00.JPG',
+		);
+	});
+
+	it('strips PXL_ Google Pixel naming', () => {
+		expect(
+			proposeFilename('PXL_20240315_182434523.jpg', dateTime(2024, 3, 15, 18, 24, 34), {stripCameraId: true}),
+		).toBe('2024-03-15 18.24.34.jpg');
+	});
+
+	it('keeps human-meaningful names even with stripCameraId enabled', () => {
+		expect(proposeFilename('vacation-cabo.jpg', dateTime(2024, 1, 2, 7, 25, 16), {stripCameraId: true})).toBe(
+			'2024-01-02 07.25.16 vacation-cabo.jpg',
+		);
+	});
+
+	it('keeps the original stem by default (stripCameraId omitted)', () => {
+		expect(proposeFilename('IMG_063842.jpg', dateTime(2024, 1, 2, 7, 25, 16))).toBe(
+			'2024-01-02 07.25.16 IMG_063842.jpg',
+		);
+	});
+
+	it('strips a camera-ID stem that follows a leading-date prefix', () => {
+		expect(proposeFilename('2023-09-01 IMG_5555.jpg', dateTime(2024, 1, 2, 7, 25, 16), {stripCameraId: true})).toBe(
+			'2024-01-02 07.25.16.jpg',
+		);
+	});
 });
