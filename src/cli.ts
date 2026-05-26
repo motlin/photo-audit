@@ -2,6 +2,7 @@ import {basename, dirname, join, relative, resolve} from 'node:path';
 import {parseArgs} from 'node:util';
 import {ExifTool} from 'exiftool-vendored';
 import {applyLinks} from './applyLink.ts';
+import {applyUndo, parseUndoLog} from './applyUndo.ts';
 import {auditFile, datedAncestorFolder} from './audit.ts';
 import type {Finding} from './classify.ts';
 import {formatDate} from './dateParts.ts';
@@ -11,7 +12,7 @@ import {parseDateFromString} from './parseDate.ts';
 import {proposeFilename} from './proposeName.ts';
 import {walkMedia} from './walk.ts';
 
-const USAGE = `Usage: just audit "<directory>" [--limit N] [--show-all] [--zone IANA] [--fix] [--help]
+const USAGE = `Usage: just audit "<directory>" [--limit N] [--show-all] [--zone IANA] [--fix | --undo] [--help]
 
 Audits every photo/video under <directory>, comparing the date in each file's
 metadata against the date in its filename. Folder dates are informational only
@@ -25,6 +26,10 @@ metadata against the date in its filename. Folder dates are informational only
                  WRONG_DATE file whose metadata is high-confidence. Original
                  paths are preserved; the new alias points at the same inode.
                  Every link is logged to photo-audit-renames.log for --undo.
+  --undo         read photo-audit-renames.log under <directory> and remove
+                 every aliased path that is still hard-linked to its original.
+                 Skips entries where the alias was replaced or the original
+                 is missing.
   --help         print this message and exit
 `;
 
@@ -131,6 +136,36 @@ async function applyFixes(
 	}
 }
 
+async function runUndo(root: string): Promise<void> {
+	const undoLogPath = join(root, UNDO_LOG_NAME);
+	const entries = await parseUndoLog(undoLogPath);
+	if (entries.length === 0) {
+		console.log(`No undo log found at ${undoLogPath} (nothing to undo).`);
+		return;
+	}
+	console.log(`Undoing ${entries.length} entries from ${undoLogPath}`);
+	const outcomes = await applyUndo(entries);
+	const counts = {unlinked: 0, 'skipped-missing-target': 0, 'skipped-missing-original': 0, 'skipped-link-severed': 0};
+	for (const outcome of outcomes) {
+		counts[outcome.kind] += 1;
+		if (outcome.kind === 'unlinked') {
+			console.log(`UNLINKED ${outcome.to}`);
+		} else if (outcome.kind === 'skipped-missing-target') {
+			console.log(`SKIPPED (alias already gone): ${outcome.to}`);
+		} else if (outcome.kind === 'skipped-missing-original') {
+			console.log(`SKIPPED (original missing, cannot verify): ${outcome.from} -> ${outcome.to}`);
+		} else {
+			console.log(`SKIPPED (link severed, alias was replaced): ${outcome.from} -> ${outcome.to}`);
+		}
+	}
+	console.log(`\n${'='.repeat(48)}`);
+	console.log(`Undo summary`);
+	console.log(`  unlinked                ${counts.unlinked}`);
+	console.log(`  skipped (already gone)  ${counts['skipped-missing-target']}`);
+	console.log(`  skipped (orig missing)  ${counts['skipped-missing-original']}`);
+	console.log(`  skipped (link severed)  ${counts['skipped-link-severed']}`);
+}
+
 async function main(): Promise<void> {
 	const {values, positionals} = parseArgs({
 		allowPositionals: true,
@@ -139,12 +174,19 @@ async function main(): Promise<void> {
 			'show-all': {type: 'boolean', default: false},
 			zone: {type: 'string'},
 			fix: {type: 'boolean', default: false},
+			undo: {type: 'boolean', default: false},
 			help: {type: 'boolean', short: 'h', default: false},
 		},
 	});
 
 	if (values.help) {
 		console.log(USAGE);
+		return;
+	}
+
+	if (values.fix && values.undo) {
+		console.error('Error: --fix and --undo are mutually exclusive.');
+		process.exitCode = 1;
 		return;
 	}
 
@@ -155,6 +197,11 @@ async function main(): Promise<void> {
 		return;
 	}
 	const root = resolve(target);
+
+	if (values.undo) {
+		await runUndo(root);
+		return;
+	}
 	const limit = values.limit === undefined ? Infinity : Number(values.limit);
 	const homeZone = values.zone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 
