@@ -328,3 +328,45 @@ export function extractDateOrEdit(tags: Tags, homeZone: string): DateOrEdit | nu
 	}
 	return {kind: 'edit-derived', firstEdit: range.firstEdit, lastEdit: range.lastEdit, software};
 }
+
+export interface CameraInfo {
+	make: string | null;
+	model: string | null;
+}
+
+function trimOrNull(value: unknown): string | null {
+	if (typeof value !== 'string') {
+		return null;
+	}
+	const trimmed = value.trim();
+	return trimmed === '' ? null : trimmed;
+}
+
+export function extractCameraInfo(tags: Tags): CameraInfo {
+	return {make: trimOrNull(tags.Make), model: trimOrNull(tags.Model)};
+}
+
+/**
+ * Format the camera info as a Lightroom-style suffix string, e.g.
+ * `Apple iPhone 15 Pro`. Returns null when no info is available. Drops a Make
+ * that is already a prefix of the Model ("Canon" + "Canon EOS 5D" -> just
+ * "Canon EOS 5D"), and strips noisy " CORPORATION" / " INC" / " INC." suffixes
+ * from the Make.
+ */
+export function formatCameraSuffix(info: CameraInfo): string | null {
+	const cleanedMake =
+		info.make === null ? null : info.make.replace(/\s+(CORPORATION|INC\.?|CO\.?,? LTD\.?)$/i, '').trim();
+	if (cleanedMake === null || cleanedMake === '') {
+		return info.model;
+	}
+	if (info.model === null) {
+		return cleanedMake;
+	}
+	if (
+		info.model.toLowerCase().startsWith(`${cleanedMake.toLowerCase()} `) ||
+		info.model.toLowerCase() === cleanedMake.toLowerCase()
+	) {
+		return info.model;
+	}
+	return `${cleanedMake} ${info.model}`;
+}

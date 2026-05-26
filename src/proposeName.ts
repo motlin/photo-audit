@@ -20,6 +20,11 @@ export interface ProposeFilenameOptions {
 	 * stems are left in place either way.
 	 */
 	stripCameraId?: boolean;
+	/**
+	 * When non-null, append a Lightroom-style `[suffix]` to the proposed name,
+	 * before the extension. Pass the formatted camera make/model string.
+	 */
+	cameraSuffix?: string | null;
 }
 
 /**
@@ -40,6 +45,12 @@ export function proposeFilename(originalName: string, date: DateParts, options: 
 		remainder = '';
 	}
 	const datePrefix = formatDate(date);
+	const cameraSuffix =
+		options.cameraSuffix !== undefined && options.cameraSuffix !== null && options.cameraSuffix !== ''
+			? ` [${options.cameraSuffix}]`
+			: '';
 
-	return remainder.length > 0 ? `${datePrefix} ${remainder}${extension}` : `${datePrefix}${extension}`;
+	return remainder.length > 0
+		? `${datePrefix} ${remainder}${cameraSuffix}${extension}`
+		: `${datePrefix}${cameraSuffix}${extension}`;
 }

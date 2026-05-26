@@ -134,4 +134,25 @@ describe('proposeFilename', () => {
 			'2024-01-02 07.25.16.jpg',
 		);
 	});
+
+	it('appends a [camera] suffix when cameraSuffix is provided', () => {
+		expect(
+			proposeFilename('IMG_063842.jpg', dateTime(2024, 1, 2, 7, 25, 16), {cameraSuffix: 'iPhone 15 Pro'}),
+		).toBe('2024-01-02 07.25.16 IMG_063842 [iPhone 15 Pro].jpg');
+	});
+
+	it('places the [camera] suffix after the date when stripCameraId removes the stem', () => {
+		expect(
+			proposeFilename('IMG_063842.jpg', dateTime(2024, 1, 2, 7, 25, 16), {
+				stripCameraId: true,
+				cameraSuffix: 'iPhone 15 Pro',
+			}),
+		).toBe('2024-01-02 07.25.16 [iPhone 15 Pro].jpg');
+	});
+
+	it('omits the suffix when cameraSuffix is null', () => {
+		expect(proposeFilename('a.jpg', dateTime(2024, 1, 2, 7, 25, 16), {cameraSuffix: null})).toBe(
+			'2024-01-02 07.25.16 a.jpg',
+		);
+	});
 });

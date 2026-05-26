@@ -7,6 +7,7 @@ import {auditFile, datedAncestorFolder} from './audit.ts';
 import type {Finding} from './classify.ts';
 import {formatDate} from './dateParts.ts';
 import {type ProposedRename} from './fix.ts';
+import {formatCameraSuffix, type CameraInfo} from './metadata.ts';
 import {type PlanEntry, readPlanFile, writePlanFile} from './plan.ts';
 import {planFolderWarnings, type DatedFolder, type FolderFileEntry, type FolderWarning} from './folderWarnings.ts';
 import {parseDateFromString} from './parseDate.ts';
@@ -59,6 +60,7 @@ function printWrongDate(
 	finding: Extract<Finding, {kind: 'WRONG_DATE'}>,
 	root: string,
 	location: string | null,
+	cameraInfo: CameraInfo,
 	stripCameraId: boolean,
 ): void {
 	const name = basename(finding.path);
@@ -68,19 +70,24 @@ function printWrongDate(
 		console.log(`  ${conflict.source.padEnd(10)}: ${formatDate(conflict.found)}  <- disagrees`);
 	}
 	printLocation(location);
-	console.log(`  rename to : ${proposeFilename(name, finding.metadataDate, {stripCameraId})}`);
+	const cameraSuffix = formatCameraSuffix(cameraInfo);
+	console.log(`  rename to : ${proposeFilename(name, finding.metadataDate, {stripCameraId, cameraSuffix})}`);
 }
 
 function printMissingDate(
 	finding: Extract<Finding, {kind: 'MISSING_DATE'}>,
 	root: string,
 	location: string | null,
+	cameraInfo: CameraInfo,
 	stripCameraId: boolean,
 ): void {
 	console.log(`\nMISSING DATE  ${relative(root, finding.path)}`);
 	console.log(`  computed  : ${formatDate(finding.metadataDate)}`);
 	printLocation(location);
-	console.log(`  rename to : ${proposeFilename(basename(finding.path), finding.metadataDate, {stripCameraId})}`);
+	const cameraSuffix = formatCameraSuffix(cameraInfo);
+	console.log(
+		`  rename to : ${proposeFilename(basename(finding.path), finding.metadataDate, {stripCameraId, cameraSuffix})}`,
+	);
 }
 
 function printMetadataSuspect(
@@ -123,6 +130,10 @@ function printFolderWarning(warning: FolderWarning, root: string): void {
 }
 
 type Fixable = Extract<Finding, {kind: 'WRONG_DATE' | 'MISSING_DATE'}>;
+interface FixableEntry {
+	finding: Fixable;
+	cameraInfo: CameraInfo;
+}
 
 /**
  * Build the list of hard-link plan entries for fixable findings, dropping
@@ -130,12 +141,12 @@ type Fixable = Extract<Finding, {kind: 'WRONG_DATE' | 'MISSING_DATE'}>;
  * held back.
  */
 function planLinksFromFindings(
-	findings: readonly Fixable[],
+	entries: readonly FixableEntry[],
 	root: string,
 	options: {stripCameraId: boolean},
 ): PlanEntry[] {
 	const plan: PlanEntry[] = [];
-	for (const finding of findings) {
+	for (const {finding, cameraInfo} of entries) {
 		if (finding.metadataConfidence !== 'high') {
 			console.log(`SKIPPED (metadata is date-only): ${relative(root, finding.path)}`);
 			continue;
@@ -143,6 +154,7 @@ function planLinksFromFindings(
 		const dir = dirname(finding.path);
 		const proposed = proposeFilename(basename(finding.path), finding.metadataDate, {
 			stripCameraId: options.stripCameraId,
+			cameraSuffix: formatCameraSuffix(cameraInfo),
 		});
 		plan.push({from: finding.path, to: join(dir, proposed), kind: finding.kind});
 	}
@@ -263,7 +275,7 @@ async function main(): Promise<void> {
 		NO_METADATA_DATE: 0,
 	};
 
-	const fixableFindings: Fixable[] = [];
+	const fixableEntries: FixableEntry[] = [];
 	const folderEntries: FolderFileEntry[] = [];
 	const datedFolders = new Map<string, DatedFolder>();
 	const exiftool = new ExifTool({geolocation: true});
@@ -273,21 +285,21 @@ async function main(): Promise<void> {
 			if (scanned >= limit) {
 				break;
 			}
-			const {finding, location} = await auditFile(exiftool, path, root, homeZone);
+			const {finding, location, cameraInfo} = await auditFile(exiftool, path, root, homeZone);
 			counts[finding.kind] += 1;
 			scanned += 1;
 
 			if (finding.kind === 'WRONG_DATE') {
-				printWrongDate(finding, root, location, values['strip-camera-id']);
-				fixableFindings.push(finding);
+				printWrongDate(finding, root, location, cameraInfo, values['strip-camera-id']);
+				fixableEntries.push({finding, cameraInfo});
 			} else if (finding.kind === 'METADATA_SUSPECT') {
 				printMetadataSuspect(finding, root, location);
 			} else if (finding.kind === 'EDIT_DERIVED') {
 				printEditDerived(finding, root, location);
 			} else if (finding.kind === 'MISSING_DATE') {
-				fixableFindings.push(finding);
+				fixableEntries.push({finding, cameraInfo});
 				if (values['show-all']) {
-					printMissingDate(finding, root, location, values['strip-camera-id']);
+					printMissingDate(finding, root, location, cameraInfo, values['strip-camera-id']);
 				}
 			} else if (finding.kind === 'NO_METADATA_DATE' && values['show-all']) {
 				console.log(`\nNO METADATA DATE  ${relative(root, finding.path)}`);
@@ -323,9 +335,9 @@ async function main(): Promise<void> {
 		}
 	}
 
-	if (fixableFindings.length > 0 && (values.fix || values.plan !== undefined)) {
+	if (fixableEntries.length > 0 && (values.fix || values.plan !== undefined)) {
 		console.log(`\n${'-'.repeat(48)}`);
-		const plan = planLinksFromFindings(fixableFindings, root, {stripCameraId: values['strip-camera-id']});
+		const plan = planLinksFromFindings(fixableEntries, root, {stripCameraId: values['strip-camera-id']});
 		if (values.plan !== undefined) {
 			await writePlanFile(values.plan, plan);
 			console.log(`Wrote ${plan.length} plan entries to ${values.plan}`);

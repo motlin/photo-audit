@@ -1,6 +1,12 @@
 import {ExifDate, ExifDateTime, type Tags} from 'exiftool-vendored';
 import {describe, expect, it} from 'vitest';
-import {extractMetadataDate, extractDateOrEdit, toLocalDateParts} from '../src/metadata.ts';
+import {
+	extractCameraInfo,
+	extractMetadataDate,
+	extractDateOrEdit,
+	formatCameraSuffix,
+	toLocalDateParts,
+} from '../src/metadata.ts';
 
 // ExifDateTime constructor:
 //   year, month, day, hour, minute, second, millisecond?, tzoffsetMinutes?,
@@ -451,5 +457,47 @@ describe('extractDateOrEdit', () => {
 		} as unknown as Tags;
 		const result = extractDateOrEdit(tags, 'America/New_York');
 		expect(result).toBeNull();
+	});
+});
+
+describe('extractCameraInfo', () => {
+	it('returns trimmed Make and Model when both are present', () => {
+		const tags = {Make: 'Apple', Model: 'iPhone 15 Pro'} as unknown as Tags;
+		expect(extractCameraInfo(tags)).toEqual({make: 'Apple', model: 'iPhone 15 Pro'});
+	});
+
+	it('returns null fields when the tags are absent', () => {
+		expect(extractCameraInfo({} as Tags)).toEqual({make: null, model: null});
+	});
+
+	it('treats empty strings and whitespace-only values as null', () => {
+		const tags = {Make: '   ', Model: ''} as unknown as Tags;
+		expect(extractCameraInfo(tags)).toEqual({make: null, model: null});
+	});
+});
+
+describe('formatCameraSuffix', () => {
+	it('returns null when both make and model are null', () => {
+		expect(formatCameraSuffix({make: null, model: null})).toBeNull();
+	});
+
+	it('returns just the model when make is null', () => {
+		expect(formatCameraSuffix({make: null, model: 'iPhone 15 Pro'})).toBe('iPhone 15 Pro');
+	});
+
+	it('returns just the make when model is null', () => {
+		expect(formatCameraSuffix({make: 'Canon', model: null})).toBe('Canon');
+	});
+
+	it('combines make and model as "Make Model"', () => {
+		expect(formatCameraSuffix({make: 'Apple', model: 'iPhone 15 Pro'})).toBe('Apple iPhone 15 Pro');
+	});
+
+	it('drops the make when the model already starts with it (e.g. Canon Canon EOS 5D)', () => {
+		expect(formatCameraSuffix({make: 'Canon', model: 'Canon EOS 5D Mark IV'})).toBe('Canon EOS 5D Mark IV');
+	});
+
+	it('strips a "CORPORATION" suffix from the make (e.g. NIKON CORPORATION D850)', () => {
+		expect(formatCameraSuffix({make: 'NIKON CORPORATION', model: 'D850'})).toBe('NIKON D850');
 	});
 });
