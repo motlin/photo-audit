@@ -1,11 +1,11 @@
-import {appendFile, access, rename} from 'node:fs/promises';
 import {basename, dirname, join, relative, resolve} from 'node:path';
 import {parseArgs} from 'node:util';
 import {ExifTool} from 'exiftool-vendored';
+import {applyLinks} from './applyLink.ts';
 import {auditFile, datedAncestorFolder} from './audit.ts';
 import type {Finding} from './classify.ts';
 import {formatDate} from './dateParts.ts';
-import {collisionsIn, formatUndoLogEntry, type ProposedRename} from './fix.ts';
+import {type ProposedRename} from './fix.ts';
 import {planFolderWarnings, type DatedFolder, type FolderFileEntry, type FolderWarning} from './folderWarnings.ts';
 import {parseDateFromString} from './parseDate.ts';
 import {proposeFilename} from './proposeName.ts';
@@ -21,8 +21,10 @@ metadata against the date in its filename. Folder dates are informational only
   --show-all     also print MISSING_DATE and NO_METADATA_DATE findings
   --zone IANA    timezone for resolving UTC-only video dates
                  (default: this machine's timezone)
-  --fix          rename files whose filename date disagrees with high-confidence
-                 metadata (default: dry-run/report-only)
+  --fix          add a correctly-dated hard-linked alias next to every
+                 WRONG_DATE file whose metadata is high-confidence. Original
+                 paths are preserved; the new alias points at the same inode.
+                 Every link is logged to photo-audit-renames.log for --undo.
   --help         print this message and exit
 `;
 
@@ -95,25 +97,17 @@ function printFolderWarning(warning: FolderWarning, root: string): void {
 	}
 }
 
-async function pathExists(path: string): Promise<boolean> {
-	try {
-		await access(path);
-		return true;
-	} catch {
-		return false;
-	}
-}
-
 /**
- * Apply file renames for WRONG_DATE findings that name a precise filename
- * conflict against high-confidence metadata. Every other case is skipped with
- * a labelled reason so the user can see what was held back and why.
+ * Add a correctly-dated hard-linked alias for each WRONG_DATE finding whose
+ * metadata is high-confidence. The original path stays in place; the new path
+ * is a second name for the same inode. Skipped cases are printed with a
+ * labelled reason so the user can see what was held back and why.
  */
 async function applyFixes(
 	wrongDateFindings: readonly Extract<Finding, {kind: 'WRONG_DATE'}>[],
 	root: string,
 ): Promise<void> {
-	const renameCandidates: ProposedRename[] = [];
+	const linkCandidates: ProposedRename[] = [];
 	for (const finding of wrongDateFindings) {
 		if (finding.metadataConfidence !== 'high') {
 			console.log(`SKIPPED (metadata is date-only): ${relative(root, finding.path)}`);
@@ -121,25 +115,19 @@ async function applyFixes(
 		}
 		const dir = dirname(finding.path);
 		const proposed = proposeFilename(basename(finding.path), finding.metadataDate);
-		renameCandidates.push({from: finding.path, to: join(dir, proposed)});
+		linkCandidates.push({from: finding.path, to: join(dir, proposed)});
 	}
 
-	const collisions = collisionsIn(renameCandidates);
 	const undoLogPath = join(root, UNDO_LOG_NAME);
-
-	for (const {from, to} of renameCandidates) {
-		if (collisions.has(to)) {
-			console.log(`SKIPPED (proposed-name collision): ${from} -> ${to}`);
-			continue;
+	const outcomes = await applyLinks(linkCandidates, undoLogPath, () => new Date().toISOString());
+	for (const outcome of outcomes) {
+		if (outcome.kind === 'linked') {
+			console.log(`LINKED ${outcome.from} -> ${outcome.to}`);
+		} else if (outcome.kind === 'skipped-collision') {
+			console.log(`SKIPPED (proposed-name collision): ${outcome.from} -> ${outcome.to}`);
+		} else {
+			console.log(`SKIPPED (target exists): ${outcome.from} -> ${outcome.to}`);
 		}
-		if (await pathExists(to)) {
-			console.log(`SKIPPED (target exists): ${from} -> ${to}`);
-			continue;
-		}
-		await rename(from, to);
-		const entry = formatUndoLogEntry({timestamp: new Date().toISOString(), from, to});
-		await appendFile(undoLogPath, entry);
-		console.log(`RENAMED ${from} -> ${to}`);
 	}
 }
 

@@ -1,13 +1,13 @@
 /**
- * Pure helpers for the `--fix` rename mode. Filesystem and process side effects
- * live in `cli.ts`; this module exists so the planning logic can be unit-tested
- * without touching disk.
+ * Pure helpers for the `--fix` hard-link mode. Filesystem and process side
+ * effects live in `cli.ts`; this module exists so the planning logic can be
+ * unit-tested without touching disk.
  */
 
 export interface ProposedRename {
-	/** Absolute path of the existing file. */
+	/** Absolute path of the existing file. Stays in place after --fix. */
 	from: string;
-	/** Absolute path the file would be renamed to. */
+	/** Absolute path of the new hard-linked alias to be added. */
 	to: string;
 }
 
