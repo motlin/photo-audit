@@ -102,18 +102,17 @@ function printFolderWarning(warning: FolderWarning, root: string): void {
 	}
 }
 
+type Fixable = Extract<Finding, {kind: 'WRONG_DATE' | 'MISSING_DATE'}>;
+
 /**
- * Add a correctly-dated hard-linked alias for each WRONG_DATE finding whose
- * metadata is high-confidence. The original path stays in place; the new path
- * is a second name for the same inode. Skipped cases are printed with a
- * labelled reason so the user can see what was held back and why.
+ * Add a correctly-dated hard-linked alias for each WRONG_DATE or MISSING_DATE
+ * finding whose metadata is high-confidence. The original path stays in place;
+ * the new path is a second name for the same inode. Skipped cases are printed
+ * with a labelled reason so the user can see what was held back and why.
  */
-async function applyFixes(
-	wrongDateFindings: readonly Extract<Finding, {kind: 'WRONG_DATE'}>[],
-	root: string,
-): Promise<void> {
+async function applyFixes(findings: readonly Fixable[], root: string): Promise<void> {
 	const linkCandidates: ProposedRename[] = [];
-	for (const finding of wrongDateFindings) {
+	for (const finding of findings) {
 		if (finding.metadataConfidence !== 'high') {
 			console.log(`SKIPPED (metadata is date-only): ${relative(root, finding.path)}`);
 			continue;
@@ -214,7 +213,7 @@ async function main(): Promise<void> {
 		NO_METADATA_DATE: 0,
 	};
 
-	const wrongDateFindings: Extract<Finding, {kind: 'WRONG_DATE'}>[] = [];
+	const fixableFindings: Fixable[] = [];
 	const folderEntries: FolderFileEntry[] = [];
 	const datedFolders = new Map<string, DatedFolder>();
 	const exiftool = new ExifTool({geolocation: true});
@@ -230,13 +229,16 @@ async function main(): Promise<void> {
 
 			if (finding.kind === 'WRONG_DATE') {
 				printWrongDate(finding, root, location);
-				wrongDateFindings.push(finding);
+				fixableFindings.push(finding);
 			} else if (finding.kind === 'METADATA_SUSPECT') {
 				printMetadataSuspect(finding, root, location);
 			} else if (finding.kind === 'EDIT_DERIVED') {
 				printEditDerived(finding, root, location);
-			} else if (finding.kind === 'MISSING_DATE' && values['show-all']) {
-				printMissingDate(finding, root, location);
+			} else if (finding.kind === 'MISSING_DATE') {
+				fixableFindings.push(finding);
+				if (values['show-all']) {
+					printMissingDate(finding, root, location);
+				}
 			} else if (finding.kind === 'NO_METADATA_DATE' && values['show-all']) {
 				console.log(`\nNO METADATA DATE  ${relative(root, finding.path)}`);
 			}
@@ -271,10 +273,10 @@ async function main(): Promise<void> {
 		}
 	}
 
-	if (values.fix && wrongDateFindings.length > 0) {
+	if (values.fix && fixableFindings.length > 0) {
 		console.log(`\n${'-'.repeat(48)}`);
-		console.log('Applying --fix file renames');
-		await applyFixes(wrongDateFindings, root);
+		console.log('Applying --fix file links');
+		await applyFixes(fixableFindings, root);
 	}
 
 	console.log(`\n${'='.repeat(48)}`);

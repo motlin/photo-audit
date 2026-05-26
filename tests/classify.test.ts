@@ -77,6 +77,34 @@ describe('classify', () => {
 		expect(finding.kind).toBe('MISSING_DATE');
 	});
 
+	it('threads metadataConfidence through to MISSING_DATE findings', () => {
+		const finding = classify({
+			path: '/photos/IMG_1.jpg',
+			metadataDate: dateTime(2024, 1, 2, 7, 25, 16),
+			metadataConfidence: 'high',
+			filenameDate: null,
+			folderDate: null,
+		});
+		expect(finding.kind).toBe('MISSING_DATE');
+		if (finding.kind === 'MISSING_DATE') {
+			expect(finding.metadataConfidence).toBe('high');
+		}
+	});
+
+	it('marks MISSING_DATE as date-only when metadata is low-confidence', () => {
+		const finding = classify({
+			path: '/photos/scan.jpg',
+			metadataDate: date(2020, 10, 29),
+			metadataConfidence: 'date-only',
+			filenameDate: null,
+			folderDate: null,
+		});
+		expect(finding.kind).toBe('MISSING_DATE');
+		if (finding.kind === 'MISSING_DATE') {
+			expect(finding.metadataConfidence).toBe('date-only');
+		}
+	});
+
 	it('reports NO_METADATA_DATE when the file has no metadata date', () => {
 		const finding = classify({
 			path: '/photos/scan.png',

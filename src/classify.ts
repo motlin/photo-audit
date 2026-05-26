@@ -66,7 +66,7 @@ export type Finding =
 			lastEdit: DateParts;
 			software: string;
 	  }
-	| {kind: 'MISSING_DATE'; path: string; metadataDate: DateParts}
+	| {kind: 'MISSING_DATE'; path: string; metadataDate: DateParts; metadataConfidence: MetadataConfidence}
 	| {kind: 'NO_METADATA_DATE'; path: string};
 
 export function classify(input: AuditInput): Finding {
@@ -102,5 +102,5 @@ export function classify(input: AuditInput): Finding {
 	if (filenameDate !== null || folderAgrees) {
 		return {kind: 'CONSISTENT', path, metadataDate};
 	}
-	return {kind: 'MISSING_DATE', path, metadataDate};
+	return {kind: 'MISSING_DATE', path, metadataDate, metadataConfidence};
 }
