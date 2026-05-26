@@ -1,6 +1,7 @@
 import {basename, dirname, join, relative, resolve} from 'node:path';
 import {parseArgs} from 'node:util';
 import {ExifTool} from 'exiftool-vendored';
+import {mkdir} from 'node:fs/promises';
 import {applyLinks} from './applyLink.ts';
 import {applyUndo, parseUndoLog} from './applyUndo.ts';
 import {auditFile, datedAncestorFolder} from './audit.ts';
@@ -8,6 +9,7 @@ import type {Finding} from './classify.ts';
 import {formatDate} from './dateParts.ts';
 import {type ProposedRename} from './fix.ts';
 import {formatCameraSuffix, type CameraInfo} from './metadata.ts';
+import {computeOutputDirectory} from './outputPath.ts';
 import {type PlanEntry, readPlanFile, writePlanFile} from './plan.ts';
 import {planFolderWarnings, type DatedFolder, type FolderFileEntry, type FolderWarning} from './folderWarnings.ts';
 import {parseDateFromString} from './parseDate.ts';
@@ -35,12 +37,18 @@ metadata against the date in its filename. Folder dates are informational only
                  No files are modified. Review/edit the file (delete lines
                  to skip), then apply with --apply.
   --apply FILE   read a plan from FILE and apply it. Undo log is still
-                 written under <directory>.
+                 written under <directory> (or under --output if given).
   --strip-camera-id
                  when proposing names, drop camera-firmware stems like
                  IMG_063842, DSC_1234, PXL_20240315_..., so the new name is
                  just the date prefix + extension. Human-named stems are
                  always preserved.
+  --output ROOT  put new hard-linked aliases under a separate hierarchy at
+                 ROOT: <ROOT>/<YYYY0> Decade/<YYYY>/<YYYY-MM>/<YYYY-MM-DD
+                 [suffix]>/. The suffix prefers a user-curated folder title
+                 (date-stripped), falls back to the GPS place name. ROOT
+                 must be on the same filesystem as <directory> for hard
+                 links to work. Undo log lands at <ROOT>/photo-audit-renames.log.
   --undo         read <directory>/photo-audit-renames.log and remove every
                  aliased path still hard-linked to its original. Skips
                  entries where the alias was replaced or the original is
@@ -133,41 +141,55 @@ type Fixable = Extract<Finding, {kind: 'WRONG_DATE' | 'MISSING_DATE'}>;
 interface FixableEntry {
 	finding: Fixable;
 	cameraInfo: CameraInfo;
+	location: string | null;
+}
+
+interface PlanOptions {
+	stripCameraId: boolean;
+	outputRoot: string | null;
 }
 
 /**
  * Build the list of hard-link plan entries for fixable findings, dropping
  * those whose metadata is date-only and printing a skip reason for each one
- * held back.
+ * held back. When `outputRoot` is set, targets are placed under a new
+ * decade/year/month/day hierarchy instead of next to the originals.
  */
-function planLinksFromFindings(
-	entries: readonly FixableEntry[],
-	root: string,
-	options: {stripCameraId: boolean},
-): PlanEntry[] {
+function planLinksFromFindings(entries: readonly FixableEntry[], root: string, options: PlanOptions): PlanEntry[] {
 	const plan: PlanEntry[] = [];
-	for (const {finding, cameraInfo} of entries) {
+	for (const {finding, cameraInfo, location} of entries) {
 		if (finding.metadataConfidence !== 'high') {
 			console.log(`SKIPPED (metadata is date-only): ${relative(root, finding.path)}`);
 			continue;
 		}
-		const dir = dirname(finding.path);
 		const proposed = proposeFilename(basename(finding.path), finding.metadataDate, {
 			stripCameraId: options.stripCameraId,
 			cameraSuffix: formatCameraSuffix(cameraInfo),
 		});
-		plan.push({from: finding.path, to: join(dir, proposed), kind: finding.kind});
+		const targetDir =
+			options.outputRoot === null
+				? dirname(finding.path)
+				: computeOutputDirectory({
+						outputRoot: options.outputRoot,
+						metadataDate: finding.metadataDate,
+						sourceFolderName: basename(dirname(finding.path)),
+						place: location,
+					});
+		plan.push({from: finding.path, to: join(targetDir, proposed), kind: finding.kind});
 	}
 	return plan;
 }
 
 /**
  * Apply a list of plan entries by creating hard links and logging each one to
- * the undo log under `root`.
+ * the undo log at `undoLogPath`. Creates any missing parent directories of
+ * `to` paths.
  */
-async function applyPlan(plan: readonly PlanEntry[], root: string): Promise<void> {
+async function applyPlan(plan: readonly PlanEntry[], undoLogPath: string): Promise<void> {
+	for (const {to} of plan) {
+		await mkdir(dirname(to), {recursive: true});
+	}
 	const candidates: ProposedRename[] = plan.map(({from, to}) => ({from, to}));
-	const undoLogPath = join(root, UNDO_LOG_NAME);
 	const outcomes = await applyLinks(candidates, undoLogPath, () => new Date().toISOString());
 	for (const outcome of outcomes) {
 		if (outcome.kind === 'linked') {
@@ -222,6 +244,7 @@ async function main(): Promise<void> {
 			plan: {type: 'string'},
 			apply: {type: 'string'},
 			'strip-camera-id': {type: 'boolean', default: false},
+			output: {type: 'string'},
 			help: {type: 'boolean', short: 'h', default: false},
 		},
 	});
@@ -248,8 +271,11 @@ async function main(): Promise<void> {
 	}
 	const root = resolve(target);
 
+	const outputRoot = values.output === undefined ? null : resolve(values.output);
+	const undoLogPath = join(outputRoot ?? root, UNDO_LOG_NAME);
+
 	if (values.undo) {
-		await runUndo(root);
+		await runUndo(outputRoot ?? root);
 		return;
 	}
 
@@ -260,7 +286,7 @@ async function main(): Promise<void> {
 			return;
 		}
 		console.log(`Applying ${plan.length} entries from ${values.apply}`);
-		await applyPlan(plan, root);
+		await applyPlan(plan, undoLogPath);
 		return;
 	}
 	const limit = values.limit === undefined ? Infinity : Number(values.limit);
@@ -291,13 +317,13 @@ async function main(): Promise<void> {
 
 			if (finding.kind === 'WRONG_DATE') {
 				printWrongDate(finding, root, location, cameraInfo, values['strip-camera-id']);
-				fixableEntries.push({finding, cameraInfo});
+				fixableEntries.push({finding, cameraInfo, location});
 			} else if (finding.kind === 'METADATA_SUSPECT') {
 				printMetadataSuspect(finding, root, location);
 			} else if (finding.kind === 'EDIT_DERIVED') {
 				printEditDerived(finding, root, location);
 			} else if (finding.kind === 'MISSING_DATE') {
-				fixableEntries.push({finding, cameraInfo});
+				fixableEntries.push({finding, cameraInfo, location});
 				if (values['show-all']) {
 					printMissingDate(finding, root, location, cameraInfo, values['strip-camera-id']);
 				}
@@ -337,13 +363,16 @@ async function main(): Promise<void> {
 
 	if (fixableEntries.length > 0 && (values.fix || values.plan !== undefined)) {
 		console.log(`\n${'-'.repeat(48)}`);
-		const plan = planLinksFromFindings(fixableEntries, root, {stripCameraId: values['strip-camera-id']});
+		const plan = planLinksFromFindings(fixableEntries, root, {
+			stripCameraId: values['strip-camera-id'],
+			outputRoot,
+		});
 		if (values.plan !== undefined) {
 			await writePlanFile(values.plan, plan);
 			console.log(`Wrote ${plan.length} plan entries to ${values.plan}`);
 		} else {
 			console.log('Applying --fix file links');
-			await applyPlan(plan, root);
+			await applyPlan(plan, undoLogPath);
 		}
 	}
 
