@@ -7,12 +7,15 @@ import {auditFile, datedAncestorFolder} from './audit.ts';
 import type {Finding} from './classify.ts';
 import {formatDate} from './dateParts.ts';
 import {type ProposedRename} from './fix.ts';
+import {type PlanEntry, readPlanFile, writePlanFile} from './plan.ts';
 import {planFolderWarnings, type DatedFolder, type FolderFileEntry, type FolderWarning} from './folderWarnings.ts';
 import {parseDateFromString} from './parseDate.ts';
 import {proposeFilename} from './proposeName.ts';
 import {walkMedia} from './walk.ts';
 
-const USAGE = `Usage: just audit "<directory>" [--limit N] [--show-all] [--zone IANA] [--fix | --undo] [--help]
+const USAGE = `Usage: just audit "<directory>" [--limit N] [--show-all] [--zone IANA]
+                                  [--fix | --plan FILE | --apply FILE | --undo]
+                                  [--help]
 
 Audits every photo/video under <directory>, comparing the date in each file's
 metadata against the date in its filename. Folder dates are informational only
@@ -23,13 +26,19 @@ metadata against the date in its filename. Folder dates are informational only
   --zone IANA    timezone for resolving UTC-only video dates
                  (default: this machine's timezone)
   --fix          add a correctly-dated hard-linked alias next to every
-                 WRONG_DATE file whose metadata is high-confidence. Original
-                 paths are preserved; the new alias points at the same inode.
-                 Every link is logged to photo-audit-renames.log for --undo.
-  --undo         read photo-audit-renames.log under <directory> and remove
-                 every aliased path that is still hard-linked to its original.
-                 Skips entries where the alias was replaced or the original
-                 is missing.
+                 WRONG_DATE / MISSING_DATE file whose metadata is high-
+                 confidence. Originals are preserved; the new alias points
+                 at the same inode. Every link is logged to
+                 <directory>/photo-audit-renames.log for --undo.
+  --plan FILE    scan and write a JSON-Lines plan of proposed links to FILE.
+                 No files are modified. Review/edit the file (delete lines
+                 to skip), then apply with --apply.
+  --apply FILE   read a plan from FILE and apply it. Undo log is still
+                 written under <directory>.
+  --undo         read <directory>/photo-audit-renames.log and remove every
+                 aliased path still hard-linked to its original. Skips
+                 entries where the alias was replaced or the original is
+                 missing.
   --help         print this message and exit
 `;
 
@@ -105,13 +114,12 @@ function printFolderWarning(warning: FolderWarning, root: string): void {
 type Fixable = Extract<Finding, {kind: 'WRONG_DATE' | 'MISSING_DATE'}>;
 
 /**
- * Add a correctly-dated hard-linked alias for each WRONG_DATE or MISSING_DATE
- * finding whose metadata is high-confidence. The original path stays in place;
- * the new path is a second name for the same inode. Skipped cases are printed
- * with a labelled reason so the user can see what was held back and why.
+ * Build the list of hard-link plan entries for fixable findings, dropping
+ * those whose metadata is date-only and printing a skip reason for each one
+ * held back.
  */
-async function applyFixes(findings: readonly Fixable[], root: string): Promise<void> {
-	const linkCandidates: ProposedRename[] = [];
+function planLinksFromFindings(findings: readonly Fixable[], root: string): PlanEntry[] {
+	const plan: PlanEntry[] = [];
 	for (const finding of findings) {
 		if (finding.metadataConfidence !== 'high') {
 			console.log(`SKIPPED (metadata is date-only): ${relative(root, finding.path)}`);
@@ -119,11 +127,19 @@ async function applyFixes(findings: readonly Fixable[], root: string): Promise<v
 		}
 		const dir = dirname(finding.path);
 		const proposed = proposeFilename(basename(finding.path), finding.metadataDate);
-		linkCandidates.push({from: finding.path, to: join(dir, proposed)});
+		plan.push({from: finding.path, to: join(dir, proposed), kind: finding.kind});
 	}
+	return plan;
+}
 
+/**
+ * Apply a list of plan entries by creating hard links and logging each one to
+ * the undo log under `root`.
+ */
+async function applyPlan(plan: readonly PlanEntry[], root: string): Promise<void> {
+	const candidates: ProposedRename[] = plan.map(({from, to}) => ({from, to}));
 	const undoLogPath = join(root, UNDO_LOG_NAME);
-	const outcomes = await applyLinks(linkCandidates, undoLogPath, () => new Date().toISOString());
+	const outcomes = await applyLinks(candidates, undoLogPath, () => new Date().toISOString());
 	for (const outcome of outcomes) {
 		if (outcome.kind === 'linked') {
 			console.log(`LINKED ${outcome.from} -> ${outcome.to}`);
@@ -174,6 +190,8 @@ async function main(): Promise<void> {
 			zone: {type: 'string'},
 			fix: {type: 'boolean', default: false},
 			undo: {type: 'boolean', default: false},
+			plan: {type: 'string'},
+			apply: {type: 'string'},
 			help: {type: 'boolean', short: 'h', default: false},
 		},
 	});
@@ -183,8 +201,11 @@ async function main(): Promise<void> {
 		return;
 	}
 
-	if (values.fix && values.undo) {
-		console.error('Error: --fix and --undo are mutually exclusive.');
+	const exclusiveModes = [values.fix, values.undo, values.plan !== undefined, values.apply !== undefined].filter(
+		Boolean,
+	).length;
+	if (exclusiveModes > 1) {
+		console.error('Error: --fix, --undo, --plan, and --apply are mutually exclusive.');
 		process.exitCode = 1;
 		return;
 	}
@@ -199,6 +220,17 @@ async function main(): Promise<void> {
 
 	if (values.undo) {
 		await runUndo(root);
+		return;
+	}
+
+	if (values.apply !== undefined) {
+		const plan = await readPlanFile(values.apply);
+		if (plan.length === 0) {
+			console.log(`Plan ${values.apply} is empty (nothing to apply).`);
+			return;
+		}
+		console.log(`Applying ${plan.length} entries from ${values.apply}`);
+		await applyPlan(plan, root);
 		return;
 	}
 	const limit = values.limit === undefined ? Infinity : Number(values.limit);
@@ -273,10 +305,16 @@ async function main(): Promise<void> {
 		}
 	}
 
-	if (values.fix && fixableFindings.length > 0) {
+	if (fixableFindings.length > 0 && (values.fix || values.plan !== undefined)) {
 		console.log(`\n${'-'.repeat(48)}`);
-		console.log('Applying --fix file links');
-		await applyFixes(fixableFindings, root);
+		const plan = planLinksFromFindings(fixableFindings, root);
+		if (values.plan !== undefined) {
+			await writePlanFile(values.plan, plan);
+			console.log(`Wrote ${plan.length} plan entries to ${values.plan}`);
+		} else {
+			console.log('Applying --fix file links');
+			await applyPlan(plan, root);
+		}
 	}
 
 	console.log(`\n${'='.repeat(48)}`);
