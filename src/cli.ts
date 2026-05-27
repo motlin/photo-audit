@@ -159,7 +159,7 @@ interface PlanOptions {
 function planLinksFromFindings(entries: readonly FixableEntry[], root: string, options: PlanOptions): PlanEntry[] {
 	const plan: PlanEntry[] = [];
 	for (const {finding, cameraInfo, location} of entries) {
-		if (finding.metadataConfidence !== 'high') {
+		if (finding.metadataConfidence === 'date-only') {
 			console.log(`SKIPPED (metadata is date-only): ${relative(root, finding.path)}`);
 			continue;
 		}

@@ -92,7 +92,7 @@ export function toLocalDateParts(value: unknown, homeZone: string): DateParts | 
  * sentinel that some software writes when only the calendar day is known).
  * `high` means a real wall-clock time was recorded.
  */
-export type MetadataConfidence = 'high' | 'date-only';
+export type MetadataConfidence = 'high' | 'date-only' | 'chat-db';
 
 export interface MetadataDate {
 	date: DateParts;
