@@ -7,10 +7,14 @@
 // messages).
 //
 // The "absPath" column resolves a leading `~/` in `attachment.filename` via
-// `os.homedir()`. Rows whose resolved path no longer exists on disk are
-// filtered out by the generator — macOS can GC `TemporaryItems` attachments
-// out from under chat.db rows, and exiftool would otherwise throw ENOENT and
-// abort the whole scan.
+// `os.homedir()`. The generator filters out two kinds of unusable rows so
+// downstream exiftool calls never abort the whole scan:
+//   1. Resolved paths that no longer exist on disk — macOS can GC
+//      `TemporaryItems` attachments out from under chat.db rows, and exiftool
+//      would otherwise throw ENOENT.
+//   2. Resolved paths containing ASCII control characters (0x00–0x1F). Real
+//      chat.db rows have been seen with a literal `\r` between two screenshot
+//      names; exiftool's wrapper rejects arguments with control characters.
 
 import BetterSqlite3 from 'better-sqlite3';
 import {existsSync} from 'node:fs';
@@ -136,6 +140,9 @@ export function* iterAttachments(db: Database): Generator<AttachmentRow> {
 	const stmt = db.prepare<[], RawRow>(ATTACHMENT_QUERY);
 	for (const row of stmt.iterate()) {
 		const absPath = resolveHome(row.filename);
+		if (/[\x00-\x1F]/.test(absPath)) {
+			continue;
+		}
 		if (!existsSync(absPath)) {
 			continue;
 		}

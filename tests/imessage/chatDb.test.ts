@@ -396,6 +396,71 @@ describe('openChatDb / iterAttachments', () => {
 		}
 	});
 
+	it('filters out rows whose resolved path contains ASCII control characters', async () => {
+		const cocoaSeconds = unixSecondsToCocoaSeconds(1_700_000_000n);
+		const msgNanos = unixSecondsToCocoaNanos(1_700_000_100n);
+
+		const cleanPath = join(dir, 'clean.jpg');
+		await touch(cleanPath);
+
+		// Real chat.db rows have been seen with a literal `\r` byte between two
+		// screenshot names; macOS accepts control characters in filenames, so we
+		// create one on disk to prove the filter rejects it even when the file
+		// exists.
+		const controlCharPath = join(dir, 'Screenshot A.png\rScreenshot B.png');
+		await touch(controlCharPath);
+
+		seedChats(db, [{chatRowId: 10, chatIdentifier: 'chat101', displayName: 'Group'}]);
+		seedHandles(db, [{handleRowId: 20, id: '+15550001111'}]);
+		seedAttachments(db, [
+			{
+				attachmentRowId: 1,
+				filename: controlCharPath,
+				transferName: 'screenshots.png',
+				mimeType: 'image/png',
+				createdDateCocoaSeconds: cocoaSeconds,
+				isSticker: 0,
+				messages: [
+					{
+						messageRowId: 100,
+						dateCocoaNanos: msgNanos,
+						isFromMe: 0,
+						handleRowId: 20,
+						chatRowId: 10,
+					},
+				],
+			},
+			{
+				attachmentRowId: 2,
+				filename: cleanPath,
+				transferName: 'clean.jpg',
+				mimeType: 'image/jpeg',
+				createdDateCocoaSeconds: cocoaSeconds,
+				isSticker: 0,
+				messages: [
+					{
+						messageRowId: 101,
+						dateCocoaNanos: msgNanos,
+						isFromMe: 0,
+						handleRowId: 20,
+						chatRowId: 10,
+					},
+				],
+			},
+		]);
+		db.close();
+
+		const reopened = openChatDb(dbPath);
+		try {
+			const rows = [...iterAttachments(reopened)];
+			expect(rows).toHaveLength(1);
+			expect(rows[0]?.absPath).toBe(cleanPath);
+			expect(rows[0]?.transferName).toBe('clean.jpg');
+		} finally {
+			reopened.close();
+		}
+	});
+
 	it('uses MIN(message.date) when an attachment is sent in multiple messages', async () => {
 		const cocoaSeconds = unixSecondsToCocoaSeconds(1_700_000_000n);
 		const earlierMsgNanos = unixSecondsToCocoaNanos(1_700_000_100n);
