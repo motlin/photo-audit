@@ -1,0 +1,107 @@
+// Read iMessage attachments from `chat.db`.
+//
+// Opens the database read-only with `immutable=1` via a file URI, so the
+// Messages.app WAL lock cannot interfere. Yields one row per attachment with
+// the chat context (group title or sender handle) and the earliest message
+// date the attachment was sent in (some attachments are re-sent in multiple
+// messages).
+//
+// The "absPath" column resolves a leading `~/` in `attachment.filename` via
+// `os.homedir()`. The file may or may not still exist on disk — disk checks
+// happen in callers.
+
+import BetterSqlite3 from 'better-sqlite3';
+import {homedir} from 'node:os';
+import {cocoaNanosToDate, cocoaSecondsToDate} from './cocoaEpoch.ts';
+
+export type Database = BetterSqlite3.Database;
+
+export interface AttachmentRow {
+	absPath: string;
+	transferName: string | null;
+	mimeType: string;
+	createdDate: Date | null;
+	messageDate: Date | null;
+	isFromMe: boolean;
+	chatIdentifier: string | null;
+	chatDisplayName: string | null;
+	handleId: string | null;
+}
+
+interface RawRow {
+	filename: string;
+	transfer_name: string | null;
+	mime_type: string;
+	created_date: bigint | number | null;
+	message_date: bigint | number | null;
+	is_from_me: bigint | number;
+	chat_identifier: string | null;
+	chat_display_name: string | null;
+	handle_id: string | null;
+}
+
+const ATTACHMENT_QUERY = `
+	SELECT
+		a.filename AS filename,
+		a.transfer_name AS transfer_name,
+		a.mime_type AS mime_type,
+		a.created_date AS created_date,
+		MIN(m.date) AS message_date,
+		MAX(m.is_from_me) AS is_from_me,
+		c.chat_identifier AS chat_identifier,
+		c.display_name AS chat_display_name,
+		h.id AS handle_id
+	FROM attachment a
+	JOIN message_attachment_join maj ON maj.attachment_id = a.ROWID
+	JOIN message m ON m.ROWID = maj.message_id
+	LEFT JOIN chat_message_join cmj ON cmj.message_id = m.ROWID
+	LEFT JOIN chat c ON c.ROWID = cmj.chat_id
+	LEFT JOIN handle h ON h.ROWID = m.handle_id
+	WHERE (a.mime_type LIKE 'image/%' OR a.mime_type LIKE 'video/%')
+		AND COALESCE(a.is_sticker, 0) = 0
+		AND a.filename IS NOT NULL
+		AND a.filename NOT LIKE '%/StickerCache/%'
+	GROUP BY a.ROWID
+`;
+
+export function openChatDb(path: string): Database {
+	// `better-sqlite3` does not enable `SQLITE_OPEN_URI`, so the `file:?immutable=1`
+	// URI form is treated as a literal filename and fails. Open the file directly
+	// with `readonly: true` instead. To bypass the WAL lock that Messages.app holds
+	// during normal operation, issue `PRAGMA query_only = 1` and disable the WAL
+	// after opening — read-only opens already use a private snapshot of WAL files.
+	const db = new BetterSqlite3(path, {readonly: true, fileMustExist: true});
+	db.pragma('query_only = 1');
+	return db;
+}
+
+function resolveHome(filename: string): string {
+	if (filename.startsWith('~/')) {
+		return `${homedir()}/${filename.slice(2)}`;
+	}
+	return filename;
+}
+
+function toBool(value: bigint | number): boolean {
+	if (typeof value === 'bigint') {
+		return value !== 0n;
+	}
+	return value !== 0;
+}
+
+export function* iterAttachments(db: Database): Generator<AttachmentRow> {
+	const stmt = db.prepare<[], RawRow>(ATTACHMENT_QUERY);
+	for (const row of stmt.iterate()) {
+		yield {
+			absPath: resolveHome(row.filename),
+			transferName: row.transfer_name,
+			mimeType: row.mime_type,
+			createdDate: cocoaSecondsToDate(row.created_date),
+			messageDate: cocoaNanosToDate(row.message_date),
+			isFromMe: toBool(row.is_from_me),
+			chatIdentifier: row.chat_identifier,
+			chatDisplayName: row.chat_display_name,
+			handleId: row.handle_id,
+		};
+	}
+}
