@@ -12,6 +12,7 @@
 
 import BetterSqlite3 from 'better-sqlite3';
 import {homedir} from 'node:os';
+import type {DateParts} from '../dateParts.ts';
 import {cocoaNanosToDate, cocoaSecondsToDate} from './cocoaEpoch.ts';
 
 export type Database = BetterSqlite3.Database;
@@ -87,6 +88,45 @@ function toBool(value: bigint | number): boolean {
 		return value !== 0n;
 	}
 	return value !== 0;
+}
+
+/**
+ * Convert a JS `Date` to local-wall-clock `DateParts` in the given IANA zone.
+ *
+ * Mirrors {@link toLocalDateParts} in `src/metadata.ts`: `ExifDateTime`s carry
+ * their own zone metadata, but a plain `Date` (what we get from `chat.db`)
+ * does not, so we project it through `Intl.DateTimeFormat` to recover the
+ * calendar parts in `zone`. Returns `null` when the input is `null`.
+ */
+export function dateToPartsInZone(value: Date | null, zone: string): DateParts | null {
+	if (value === null) {
+		return null;
+	}
+	const formatter = new Intl.DateTimeFormat('en-US', {
+		timeZone: zone,
+		hour12: false,
+		year: 'numeric',
+		month: '2-digit',
+		day: '2-digit',
+		hour: '2-digit',
+		minute: '2-digit',
+		second: '2-digit',
+	});
+	const parts: Partial<Record<Intl.DateTimeFormatPartTypes, string>> = {};
+	for (const part of formatter.formatToParts(value)) {
+		if (part.type !== 'literal') {
+			parts[part.type] = part.value;
+		}
+	}
+	const year = Number(parts.year);
+	const month = Number(parts.month);
+	const day = Number(parts.day);
+	// `hour12: false` can produce "24" for midnight in some Intl implementations;
+	// normalize to 0 so DateParts stays canonical.
+	const hour = Number(parts.hour) % 24;
+	const minute = Number(parts.minute);
+	const second = Number(parts.second);
+	return {year, month, day, time: {hour, minute, second}};
 }
 
 export function* iterAttachments(db: Database): Generator<AttachmentRow> {
