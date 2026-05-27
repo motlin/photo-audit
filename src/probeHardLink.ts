@@ -1,23 +1,27 @@
-import {link, mkdtemp, rm, writeFile} from 'node:fs/promises';
+import {access, link, mkdtemp, rm, unlink} from 'node:fs/promises';
 import {join} from 'node:path';
 
 /**
- * Return true when hard links can be created inside `directory`. Used as a
- * pre-flight check before --fix / --apply, so the tool can refuse cleanly
- * on filesystems like ExFAT that do not support hard links.
+ * Return true when a hard link from `sourceFile` can be created inside
+ * `destinationDir`. Catches both filesystems that do not support hard links
+ * (ENOTSUP, e.g. ExFAT) and cross-filesystem attempts (EXDEV).
  */
-export async function probeHardLinkSupport(directory: string): Promise<boolean> {
-	let probeDir: string;
+export async function probeHardLinkSupport(sourceFile: string, destinationDir: string): Promise<boolean> {
 	try {
-		probeDir = await mkdtemp(join(directory, '.photo-audit-probe-'));
+		await access(sourceFile);
 	} catch {
 		return false;
 	}
-	const source = join(probeDir, 'source');
+	let probeDir: string;
+	try {
+		probeDir = await mkdtemp(join(destinationDir, '.photo-audit-probe-'));
+	} catch {
+		return false;
+	}
 	const target = join(probeDir, 'target');
 	try {
-		await writeFile(source, '');
-		await link(source, target);
+		await link(sourceFile, target);
+		await unlink(target);
 		return true;
 	} catch {
 		return false;

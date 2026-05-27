@@ -287,9 +287,10 @@ async function main(): Promise<void> {
 			return;
 		}
 		await mkdir(outputRoot ?? root, {recursive: true});
-		if (!(await probeHardLinkSupport(outputRoot ?? root))) {
+		const probeSource = plan[0]?.from;
+		if (probeSource !== undefined && !(await probeHardLinkSupport(probeSource, outputRoot ?? root))) {
 			console.error(
-				`Error: ${outputRoot ?? root} does not support hard links (likely ExFAT/FAT/SMB). --fix and --apply require an APFS or HFS+ destination.`,
+				`Error: cannot create hard links from ${probeSource} into ${outputRoot ?? root}. Either the destination filesystem does not support hard links (ExFAT/FAT/SMB) or source and destination are on different filesystems (cross-device link not permitted). --fix and --apply require source and destination on the same APFS or HFS+ volume.`,
 			);
 			process.exitCode = 1;
 			return;
@@ -381,9 +382,10 @@ async function main(): Promise<void> {
 			console.log(`Wrote ${plan.length} plan entries to ${values.plan}`);
 		} else {
 			await mkdir(outputRoot ?? root, {recursive: true});
-			if (!(await probeHardLinkSupport(outputRoot ?? root))) {
+			const probeSource = plan[0]?.from;
+			if (probeSource !== undefined && !(await probeHardLinkSupport(probeSource, outputRoot ?? root))) {
 				console.error(
-					`Error: ${outputRoot ?? root} does not support hard links (likely ExFAT/FAT/SMB). --fix requires an APFS or HFS+ destination.`,
+					`Error: cannot create hard links from ${probeSource} into ${outputRoot ?? root}. Either the destination filesystem does not support hard links (ExFAT/FAT/SMB) or source and destination are on different filesystems (cross-device link not permitted). --fix requires source and destination on the same APFS or HFS+ volume.`,
 				);
 				process.exitCode = 1;
 				return;
