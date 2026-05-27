@@ -1,9 +1,14 @@
 import BetterSqlite3 from 'better-sqlite3';
-import {mkdtemp, rm} from 'node:fs/promises';
-import {homedir, tmpdir} from 'node:os';
-import {join} from 'node:path';
+import {mkdir, mkdtemp, rm, writeFile} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {dirname, join} from 'node:path';
 import {afterEach, beforeEach, describe, expect, it} from 'vitest';
 import {iterAttachments, openChatDb} from '../../src/imessage/chatDb.ts';
+
+async function touch(path: string): Promise<void> {
+	await mkdir(dirname(path), {recursive: true});
+	await writeFile(path, '');
+}
 
 const COCOA_EPOCH_UNIX_OFFSET_SECONDS = 978307200n;
 
@@ -136,11 +141,16 @@ describe('openChatDb / iterAttachments', () => {
 		await rm(dir, {recursive: true, force: true});
 	});
 
-	it('yields image and video attachments joined with chat and handle context', () => {
+	it('yields image and video attachments joined with chat and handle context', async () => {
 		const imageCocoaSeconds = unixSecondsToCocoaSeconds(1_700_000_000n);
 		const videoCocoaSeconds = unixSecondsToCocoaSeconds(1_700_000_500n);
 		const imageMsgNanos = unixSecondsToCocoaNanos(1_700_000_100n);
 		const videoMsgNanos = unixSecondsToCocoaNanos(1_700_000_600n);
+
+		const imgPath = join(dir, 'IMG.heic');
+		const movPath = join(dir, 'MOV.mov');
+		await touch(imgPath);
+		await touch(movPath);
 
 		seedChats(db, [
 			{chatRowId: 10, chatIdentifier: 'chat101', displayName: 'Family Trip'},
@@ -153,7 +163,7 @@ describe('openChatDb / iterAttachments', () => {
 		seedAttachments(db, [
 			{
 				attachmentRowId: 1,
-				filename: '~/Library/Messages/Attachments/00/00/AAA/IMG.heic',
+				filename: imgPath,
 				transferName: 'IMG.heic',
 				mimeType: 'image/heic',
 				createdDateCocoaSeconds: imageCocoaSeconds,
@@ -170,7 +180,7 @@ describe('openChatDb / iterAttachments', () => {
 			},
 			{
 				attachmentRowId: 2,
-				filename: '/abs/path/MOV.mov',
+				filename: movPath,
 				transferName: 'MOV.mov',
 				mimeType: 'video/quicktime',
 				createdDateCocoaSeconds: videoCocoaSeconds,
@@ -193,7 +203,7 @@ describe('openChatDb / iterAttachments', () => {
 			const rows = [...iterAttachments(reopened)];
 			expect(rows).toEqual([
 				{
-					absPath: `${homedir()}/Library/Messages/Attachments/00/00/AAA/IMG.heic`,
+					absPath: imgPath,
 					transferName: 'IMG.heic',
 					mimeType: 'image/heic',
 					createdDate: new Date(1_700_000_000_000),
@@ -204,7 +214,7 @@ describe('openChatDb / iterAttachments', () => {
 					handleId: '+15550001111',
 				},
 				{
-					absPath: '/abs/path/MOV.mov',
+					absPath: movPath,
 					transferName: 'MOV.mov',
 					mimeType: 'video/quicktime',
 					createdDate: new Date(1_700_000_500_000),
@@ -220,16 +230,19 @@ describe('openChatDb / iterAttachments', () => {
 		}
 	});
 
-	it('filters out stickers, non-image/video MIME, StickerCache paths, and null filenames', () => {
+	it('filters out stickers, non-image/video MIME, StickerCache paths, and null filenames', async () => {
 		const cocoaSeconds = unixSecondsToCocoaSeconds(1_700_000_000n);
 		const msgNanos = unixSecondsToCocoaNanos(1_700_000_100n);
+
+		const keeperPath = join(dir, 'keeper.jpg');
+		await touch(keeperPath);
 
 		seedChats(db, [{chatRowId: 10, chatIdentifier: 'chat101', displayName: 'Group'}]);
 		seedHandles(db, [{handleRowId: 20, id: '+15550001111'}]);
 		seedAttachments(db, [
 			{
 				attachmentRowId: 1,
-				filename: '~/Library/Messages/Attachments/00/00/AAA/keeper.jpg',
+				filename: keeperPath,
 				transferName: 'keeper.jpg',
 				mimeType: 'image/jpeg',
 				createdDateCocoaSeconds: cocoaSeconds,
@@ -325,9 +338,12 @@ describe('openChatDb / iterAttachments', () => {
 		}
 	});
 
-	it('still yields rows when the on-disk file is missing (disk check is elsewhere)', () => {
+	it('filters out rows whose on-disk file is missing and keeps present-on-disk rows', async () => {
 		const cocoaSeconds = unixSecondsToCocoaSeconds(1_700_000_000n);
 		const msgNanos = unixSecondsToCocoaNanos(1_700_000_100n);
+
+		const presentPath = join(dir, 'present.jpg');
+		await touch(presentPath);
 
 		seedChats(db, [{chatRowId: 10, chatIdentifier: 'chat101', displayName: 'Group'}]);
 		seedHandles(db, [{handleRowId: 20, id: '+15550001111'}]);
@@ -349,6 +365,23 @@ describe('openChatDb / iterAttachments', () => {
 					},
 				],
 			},
+			{
+				attachmentRowId: 2,
+				filename: presentPath,
+				transferName: 'present.jpg',
+				mimeType: 'image/jpeg',
+				createdDateCocoaSeconds: cocoaSeconds,
+				isSticker: 0,
+				messages: [
+					{
+						messageRowId: 101,
+						dateCocoaNanos: msgNanos,
+						isFromMe: 0,
+						handleRowId: 20,
+						chatRowId: 10,
+					},
+				],
+			},
 		]);
 		db.close();
 
@@ -356,23 +389,27 @@ describe('openChatDb / iterAttachments', () => {
 		try {
 			const rows = [...iterAttachments(reopened)];
 			expect(rows).toHaveLength(1);
-			expect(rows[0]?.absPath).toBe('/nonexistent/disk/path.jpg');
+			expect(rows[0]?.absPath).toBe(presentPath);
+			expect(rows[0]?.transferName).toBe('present.jpg');
 		} finally {
 			reopened.close();
 		}
 	});
 
-	it('uses MIN(message.date) when an attachment is sent in multiple messages', () => {
+	it('uses MIN(message.date) when an attachment is sent in multiple messages', async () => {
 		const cocoaSeconds = unixSecondsToCocoaSeconds(1_700_000_000n);
 		const earlierMsgNanos = unixSecondsToCocoaNanos(1_700_000_100n);
 		const laterMsgNanos = unixSecondsToCocoaNanos(1_700_000_900n);
+
+		const photoPath = join(dir, 'photo.jpg');
+		await touch(photoPath);
 
 		seedChats(db, [{chatRowId: 10, chatIdentifier: 'chat101', displayName: 'Group'}]);
 		seedHandles(db, [{handleRowId: 20, id: '+15550001111'}]);
 		seedAttachments(db, [
 			{
 				attachmentRowId: 1,
-				filename: '/abs/photo.jpg',
+				filename: photoPath,
 				transferName: 'photo.jpg',
 				mimeType: 'image/jpeg',
 				createdDateCocoaSeconds: cocoaSeconds,
@@ -407,9 +444,14 @@ describe('openChatDb / iterAttachments', () => {
 		}
 	});
 
-	it('yields chatDisplayName for group chats and null for DMs', () => {
+	it('yields chatDisplayName for group chats and null for DMs', async () => {
 		const cocoaSeconds = unixSecondsToCocoaSeconds(1_700_000_000n);
 		const msgNanos = unixSecondsToCocoaNanos(1_700_000_100n);
+
+		const groupPath = join(dir, 'group.jpg');
+		const dmPath = join(dir, 'dm.jpg');
+		await touch(groupPath);
+		await touch(dmPath);
 
 		seedChats(db, [
 			{chatRowId: 10, chatIdentifier: 'chat101', displayName: 'Family Trip'},
@@ -422,7 +464,7 @@ describe('openChatDb / iterAttachments', () => {
 		seedAttachments(db, [
 			{
 				attachmentRowId: 1,
-				filename: '/abs/group.jpg',
+				filename: groupPath,
 				transferName: 'group.jpg',
 				mimeType: 'image/jpeg',
 				createdDateCocoaSeconds: cocoaSeconds,
@@ -439,7 +481,7 @@ describe('openChatDb / iterAttachments', () => {
 			},
 			{
 				attachmentRowId: 2,
-				filename: '/abs/dm.jpg',
+				filename: dmPath,
 				transferName: 'dm.jpg',
 				mimeType: 'image/jpeg',
 				createdDateCocoaSeconds: cocoaSeconds,

@@ -7,10 +7,13 @@
 // messages).
 //
 // The "absPath" column resolves a leading `~/` in `attachment.filename` via
-// `os.homedir()`. The file may or may not still exist on disk — disk checks
-// happen in callers.
+// `os.homedir()`. Rows whose resolved path no longer exists on disk are
+// filtered out by the generator — macOS can GC `TemporaryItems` attachments
+// out from under chat.db rows, and exiftool would otherwise throw ENOENT and
+// abort the whole scan.
 
 import BetterSqlite3 from 'better-sqlite3';
+import {existsSync} from 'node:fs';
 import {homedir} from 'node:os';
 import type {DateParts} from '../dateParts.ts';
 import {cocoaNanosToDate, cocoaSecondsToDate} from './cocoaEpoch.ts';
@@ -132,8 +135,12 @@ export function dateToPartsInZone(value: Date | null, zone: string): DateParts |
 export function* iterAttachments(db: Database): Generator<AttachmentRow> {
 	const stmt = db.prepare<[], RawRow>(ATTACHMENT_QUERY);
 	for (const row of stmt.iterate()) {
+		const absPath = resolveHome(row.filename);
+		if (!existsSync(absPath)) {
+			continue;
+		}
 		yield {
-			absPath: resolveHome(row.filename),
+			absPath,
 			transferName: row.transfer_name,
 			mimeType: row.mime_type,
 			createdDate: cocoaSecondsToDate(row.created_date),
