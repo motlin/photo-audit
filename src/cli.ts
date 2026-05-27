@@ -1,13 +1,16 @@
 import {basename, dirname, join, relative, resolve} from 'node:path';
+import {homedir} from 'node:os';
 import {parseArgs} from 'node:util';
 import {ExifTool} from 'exiftool-vendored';
 import {mkdir} from 'node:fs/promises';
 import {applyLinks} from './applyLink.ts';
 import {applyUndo, parseUndoLog, removeEmptyAncestors} from './applyUndo.ts';
-import {auditFile, datedAncestorFolder} from './audit.ts';
+import {datedAncestorFolder} from './audit.ts';
 import type {Finding} from './classify.ts';
 import {formatDate} from './dateParts.ts';
 import {type ProposedRename} from './fix.ts';
+import {iterAttachments, openChatDb} from './imessage/chatDb.ts';
+import {contextFor, type MediaItem} from './mediaSource.ts';
 import {formatCameraSuffix, type CameraInfo} from './metadata.ts';
 import {computeOutputDirectory} from './outputPath.ts';
 import {type PlanEntry, readPlanFile, writePlanFile} from './plan.ts';
@@ -18,6 +21,7 @@ import {proposeFilename} from './proposeName.ts';
 import {walkMedia} from './walk.ts';
 
 const USAGE = `Usage: just audit "<directory>" [--limit N] [--show-all] [--zone IANA]
+                                  [--imessage [--db PATH]]
                                   [--fix | --plan FILE | --apply FILE | --undo]
                                   [--help]
 
@@ -29,6 +33,13 @@ metadata against the date in its filename. Folder dates are informational only
   --show-all     also print MISSING_DATE and NO_METADATA_DATE findings
   --zone IANA    timezone for resolving UTC-only video dates
                  (default: this machine's timezone)
+  --imessage     audit iMessage attachments via chat.db instead of walking
+                 <directory>. The positional directory is optional in this
+                 mode. UUID-hashed parent folders are ignored; chat display
+                 names (group title) or sender handles drive day-folder
+                 suffixes. Requires --output when combined with --fix.
+  --db PATH      override the chat.db location (default
+                 ~/Library/Messages/chat.db). Opened read-only.
   --fix          add a correctly-dated hard-linked alias next to every
                  WRONG_DATE / MISSING_DATE file whose metadata is high-
                  confidence. Originals are preserved; the new alias points
@@ -143,6 +154,7 @@ interface FixableEntry {
 	finding: Fixable;
 	cameraInfo: CameraInfo;
 	location: string | null;
+	sourceFolderName: string | null;
 }
 
 interface PlanOptions {
@@ -158,7 +170,7 @@ interface PlanOptions {
  */
 function planLinksFromFindings(entries: readonly FixableEntry[], root: string, options: PlanOptions): PlanEntry[] {
 	const plan: PlanEntry[] = [];
-	for (const {finding, cameraInfo, location} of entries) {
+	for (const {finding, cameraInfo, location, sourceFolderName} of entries) {
 		if (finding.metadataConfidence === 'date-only') {
 			console.log(`SKIPPED (metadata is date-only): ${relative(root, finding.path)}`);
 			continue;
@@ -173,7 +185,7 @@ function planLinksFromFindings(entries: readonly FixableEntry[], root: string, o
 				: computeOutputDirectory({
 						outputRoot: options.outputRoot,
 						metadataDate: finding.metadataDate,
-						sourceFolderName: basename(dirname(finding.path)),
+						sourceFolderName,
 						place: location,
 					});
 		plan.push({from: finding.path, to: join(targetDir, proposed), kind: finding.kind});
@@ -247,6 +259,8 @@ async function main(): Promise<void> {
 			apply: {type: 'string'},
 			'strip-camera-id': {type: 'boolean', default: false},
 			output: {type: 'string'},
+			imessage: {type: 'boolean', default: false},
+			db: {type: 'string'},
 			help: {type: 'boolean', short: 'h', default: false},
 		},
 	});
@@ -266,15 +280,23 @@ async function main(): Promise<void> {
 	}
 
 	const target = positionals[0];
-	if (target === undefined) {
+	if (target === undefined && !values.imessage) {
 		console.error(USAGE);
 		process.exitCode = 1;
 		return;
 	}
-	const root = resolve(target);
+	if (values.imessage && values.fix && values.output === undefined) {
+		console.error(
+			'Error: --imessage --fix requires --output. Refusing to add hard-linked aliases inside ~/Library/Messages/Attachments/.',
+		);
+		process.exitCode = 1;
+		return;
+	}
+	const root = target === undefined ? resolve('.') : resolve(target);
 
 	const outputRoot = values.output === undefined ? null : resolve(values.output);
 	const undoLogPath = join(outputRoot ?? root, UNDO_LOG_NAME);
+	const dbPath = values.db ?? join(homedir(), 'Library', 'Messages', 'chat.db');
 
 	if (values.undo) {
 		await runUndo(outputRoot ?? root);
@@ -317,24 +339,43 @@ async function main(): Promise<void> {
 	const datedFolders = new Map<string, DatedFolder>();
 	const exiftool = new ExifTool({geolocation: true});
 	let scanned = 0;
-	try {
+
+	async function* mediaItems(): AsyncGenerator<MediaItem> {
+		if (values.imessage) {
+			const db = openChatDb(dbPath);
+			try {
+				for (const row of iterAttachments(db)) {
+					yield {kind: 'imessage', path: row.absPath, chat: row};
+				}
+			} finally {
+				db.close();
+			}
+			return;
+		}
 		for await (const path of walkMedia(root)) {
+			yield {kind: 'fs', path};
+		}
+	}
+
+	try {
+		for await (const item of mediaItems()) {
 			if (scanned >= limit) {
 				break;
 			}
-			const {finding, location, cameraInfo} = await auditFile(exiftool, path, root, homeZone);
+			const ctx = await contextFor(exiftool, item, root, homeZone);
+			const {finding, location, cameraInfo, sourceFolderName} = ctx;
 			counts[finding.kind] += 1;
 			scanned += 1;
 
 			if (finding.kind === 'WRONG_DATE') {
 				printWrongDate(finding, root, location, cameraInfo, values['strip-camera-id']);
-				fixableEntries.push({finding, cameraInfo, location});
+				fixableEntries.push({finding, cameraInfo, location, sourceFolderName});
 			} else if (finding.kind === 'METADATA_SUSPECT') {
 				printMetadataSuspect(finding, root, location);
 			} else if (finding.kind === 'EDIT_DERIVED') {
 				printEditDerived(finding, root, location);
 			} else if (finding.kind === 'MISSING_DATE') {
-				fixableEntries.push({finding, cameraInfo, location});
+				fixableEntries.push({finding, cameraInfo, location, sourceFolderName});
 				if (values['show-all']) {
 					printMissingDate(finding, root, location, cameraInfo, values['strip-camera-id']);
 				}
@@ -342,8 +383,13 @@ async function main(): Promise<void> {
 				console.log(`\nNO METADATA DATE  ${relative(root, finding.path)}`);
 			}
 
-			if (finding.kind === 'CONSISTENT' || finding.kind === 'WRONG_DATE' || finding.kind === 'MISSING_DATE') {
-				const folderPath = datedAncestorFolder(path, root);
+			// Folder-warning pipeline only applies to the filesystem source; iMessage
+			// attachments live under UUID-hashed parents that have no calendar meaning.
+			if (
+				item.kind === 'fs' &&
+				(finding.kind === 'CONSISTENT' || finding.kind === 'WRONG_DATE' || finding.kind === 'MISSING_DATE')
+			) {
+				const folderPath = datedAncestorFolder(item.path, root);
 				if (folderPath !== null) {
 					if (!datedFolders.has(folderPath)) {
 						const folderDate = parseDateFromString(basename(folderPath));
@@ -351,7 +397,7 @@ async function main(): Promise<void> {
 							datedFolders.set(folderPath, {folderPath, folderDate});
 						}
 					}
-					folderEntries.push({path, metadataDate: finding.metadataDate, folderPath});
+					folderEntries.push({path: item.path, metadataDate: finding.metadataDate, folderPath});
 				}
 			}
 
