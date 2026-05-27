@@ -11,6 +11,7 @@ import {type ProposedRename} from './fix.ts';
 import {formatCameraSuffix, type CameraInfo} from './metadata.ts';
 import {computeOutputDirectory} from './outputPath.ts';
 import {type PlanEntry, readPlanFile, writePlanFile} from './plan.ts';
+import {probeHardLinkSupport} from './probeHardLink.ts';
 import {planFolderWarnings, type DatedFolder, type FolderFileEntry, type FolderWarning} from './folderWarnings.ts';
 import {parseDateFromString} from './parseDate.ts';
 import {proposeFilename} from './proposeName.ts';
@@ -285,6 +286,14 @@ async function main(): Promise<void> {
 			console.log(`Plan ${values.apply} is empty (nothing to apply).`);
 			return;
 		}
+		await mkdir(outputRoot ?? root, {recursive: true});
+		if (!(await probeHardLinkSupport(outputRoot ?? root))) {
+			console.error(
+				`Error: ${outputRoot ?? root} does not support hard links (likely ExFAT/FAT/SMB). --fix and --apply require an APFS or HFS+ destination.`,
+			);
+			process.exitCode = 1;
+			return;
+		}
 		console.log(`Applying ${plan.length} entries from ${values.apply}`);
 		await applyPlan(plan, undoLogPath);
 		return;
@@ -371,6 +380,14 @@ async function main(): Promise<void> {
 			await writePlanFile(values.plan, plan);
 			console.log(`Wrote ${plan.length} plan entries to ${values.plan}`);
 		} else {
+			await mkdir(outputRoot ?? root, {recursive: true});
+			if (!(await probeHardLinkSupport(outputRoot ?? root))) {
+				console.error(
+					`Error: ${outputRoot ?? root} does not support hard links (likely ExFAT/FAT/SMB). --fix requires an APFS or HFS+ destination.`,
+				);
+				process.exitCode = 1;
+				return;
+			}
 			console.log('Applying --fix file links');
 			await applyPlan(plan, undoLogPath);
 		}
