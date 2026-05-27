@@ -20,6 +20,7 @@
 		"prepare": "vp config"
 	},
 	"dependencies": {
+		"better-sqlite3": "^12.10.0",
 		"exiftool-vendored": "^35.20.0"
 	},
 	"devDependencies": {

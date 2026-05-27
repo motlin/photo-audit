@@ -1,4 +1,5 @@
 onlyBuiltDependencies:
+    - better-sqlite3
     - esbuild
 catalog:
     vite: npm:@voidzero-dev/vite-plus-core@latest
@@ -15,6 +16,7 @@ peerDependencyRules:
         vite: '*'
         vitest: '*'
 allowBuilds:
+    better-sqlite3: true
     esbuild: true
     fallow: true
     unrs-resolver: true
