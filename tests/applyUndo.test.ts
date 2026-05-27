@@ -1,8 +1,8 @@
-import {link, mkdtemp, readFile, rm, stat, writeFile} from 'node:fs/promises';
+import {link, mkdir, mkdtemp, readFile, rm, stat, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {afterEach, beforeEach, describe, expect, it} from 'vitest';
-import {applyUndo, parseUndoLog} from '../src/applyUndo.ts';
+import {applyUndo, parseUndoLog, removeEmptyAncestors} from '../src/applyUndo.ts';
 
 describe('parseUndoLog', () => {
 	let dir = '';
@@ -109,5 +109,36 @@ describe('applyUndo', () => {
 			{kind: 'unlinked', from: from1, to: to1},
 			{kind: 'skipped-missing-target', from: from2, to: to2},
 		]);
+	});
+});
+
+describe('removeEmptyAncestors', () => {
+	let dir = '';
+	beforeEach(async () => {
+		dir = await mkdtemp(join(tmpdir(), 'photo-audit-rmdir-'));
+	});
+	afterEach(async () => {
+		await rm(dir, {recursive: true, force: true});
+	});
+
+	it('removes empty parent directories up to (but not including) the stop root', async () => {
+		const nested = join(dir, 'a', 'b', 'c');
+		await mkdir(nested, {recursive: true});
+		await removeEmptyAncestors(join(nested, 'gone.jpg'), dir);
+		await expect(stat(join(dir, 'a'))).rejects.toMatchObject({code: 'ENOENT'});
+		await expect(stat(dir)).resolves.toBeDefined();
+	});
+
+	it('stops at the first non-empty ancestor', async () => {
+		const nested = join(dir, 'a', 'b', 'c');
+		await mkdir(nested, {recursive: true});
+		await writeFile(join(dir, 'a', 'sibling.jpg'), '');
+		await removeEmptyAncestors(join(nested, 'gone.jpg'), dir);
+		await expect(stat(join(dir, 'a', 'b'))).rejects.toMatchObject({code: 'ENOENT'});
+		await expect(stat(join(dir, 'a'))).resolves.toBeDefined();
+	});
+
+	it('is a no-op when the parent does not exist', async () => {
+		await expect(removeEmptyAncestors(join(dir, 'nope', 'file.jpg'), dir)).resolves.toBeUndefined();
 	});
 });

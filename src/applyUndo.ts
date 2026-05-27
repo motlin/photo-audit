@@ -1,4 +1,5 @@
-import {readFile, stat, unlink} from 'node:fs/promises';
+import {readFile, rmdir, stat, unlink} from 'node:fs/promises';
+import {dirname} from 'node:path';
 import type {UndoLogEntry} from './fix.ts';
 
 export type UndoOutcome =
@@ -72,4 +73,22 @@ export async function applyUndo(entries: readonly UndoLogEntry[]): Promise<UndoO
 		outcomes.push({kind: 'unlinked', from, to});
 	}
 	return outcomes;
+}
+
+/**
+ * Walk up from the parent of `removedPath`, rmdir-ing each directory that is
+ * now empty. Stops at `stopRoot` (exclusive) or at the first non-empty
+ * directory. Uses rmdir, which fails on non-empty directories, so this is
+ * safe to call against trees the user may have added unrelated files to.
+ */
+export async function removeEmptyAncestors(removedPath: string, stopRoot: string): Promise<void> {
+	let dir = dirname(removedPath);
+	while (dir !== stopRoot && dir !== dirname(dir)) {
+		try {
+			await rmdir(dir);
+		} catch {
+			return;
+		}
+		dir = dirname(dir);
+	}
 }

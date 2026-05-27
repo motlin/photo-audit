@@ -3,7 +3,7 @@ import {parseArgs} from 'node:util';
 import {ExifTool} from 'exiftool-vendored';
 import {mkdir} from 'node:fs/promises';
 import {applyLinks} from './applyLink.ts';
-import {applyUndo, parseUndoLog} from './applyUndo.ts';
+import {applyUndo, parseUndoLog, removeEmptyAncestors} from './applyUndo.ts';
 import {auditFile, datedAncestorFolder} from './audit.ts';
 import type {Finding} from './classify.ts';
 import {formatDate} from './dateParts.ts';
@@ -217,6 +217,7 @@ async function runUndo(root: string): Promise<void> {
 		counts[outcome.kind] += 1;
 		if (outcome.kind === 'unlinked') {
 			console.log(`UNLINKED ${outcome.to}`);
+			await removeEmptyAncestors(outcome.to, root);
 		} else if (outcome.kind === 'skipped-missing-target') {
 			console.log(`SKIPPED (alias already gone): ${outcome.to}`);
 		} else if (outcome.kind === 'skipped-missing-original') {
