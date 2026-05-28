@@ -1,10 +1,21 @@
 // Read iMessage attachments from `chat.db`.
 //
-// Opens the database read-only with `immutable=1` via a file URI, so the
-// Messages.app WAL lock cannot interfere. Yields one row per attachment with
-// the chat context (group title or sender handle) and the earliest message
-// date the attachment was sent in (some attachments are re-sent in multiple
+// Opens the database read-only and yields one row per attachment with the
+// chat context (group title or sender handle) and the earliest message date
+// the attachment was sent in (some attachments are re-sent in multiple
 // messages).
+//
+// Known limitation — open mode is weaker than the plan called for. The plan
+// at .llm/plans/2026-05-26-imessage-attachment-audit.md specified opening
+// with the SQLite URI `file:<path>?mode=ro&immutable=1` to fully bypass the
+// WAL lock Messages.app holds. `better-sqlite3` does not enable
+// `SQLITE_OPEN_URI`, so the URI is treated as a literal filename and the
+// open fails. We fall back to `readonly: true` + `PRAGMA query_only = 1`
+// (see `openChatDb` below). This is enough for the common case — read-only
+// opens take a private snapshot of the WAL — but it does NOT guarantee a
+// successful open if Messages.app holds an exclusive write lock during a
+// scan. If that becomes a real problem, snapshot the DB to a temp file
+// before opening, or swap in a SQLite binding that exposes URI mode.
 //
 // The "absPath" column resolves a leading `~/` in `attachment.filename` via
 // `os.homedir()`. The generator filters out two kinds of unusable rows so
@@ -73,11 +84,13 @@ const ATTACHMENT_QUERY = `
 `;
 
 export function openChatDb(path: string): Database {
-	// `better-sqlite3` does not enable `SQLITE_OPEN_URI`, so the `file:?immutable=1`
-	// URI form is treated as a literal filename and fails. Open the file directly
-	// with `readonly: true` instead. To bypass the WAL lock that Messages.app holds
-	// during normal operation, issue `PRAGMA query_only = 1` and disable the WAL
-	// after opening — read-only opens already use a private snapshot of WAL files.
+	// See the file-header "Known limitation" note: we cannot use the
+	// `file:<path>?mode=ro&immutable=1` URI form because `better-sqlite3` does
+	// not enable `SQLITE_OPEN_URI`. Open the file directly with `readonly:
+	// true` and add `PRAGMA query_only = 1` as defense-in-depth. Read-only
+	// opens already use a private snapshot of WAL files, which covers the
+	// normal Messages.app case but is not equivalent to `immutable=1` under
+	// an exclusive write lock.
 	const db = new BetterSqlite3(path, {readonly: true, fileMustExist: true});
 	db.pragma('query_only = 1');
 	return db;
