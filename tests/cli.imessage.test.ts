@@ -108,6 +108,45 @@ describe('cli --imessage', () => {
 		expect(result.stderr).toContain('--imessage --fix requires --output');
 	});
 
+	it('applies a plan with --apply --output and no positional or --imessage', async () => {
+		// Source file lives outside --output so apply creates a fresh hard link
+		// at the destination derived from the plan.
+		const sourcePath = join(dir, 'source.jpg');
+		await writeFile(sourcePath, minimalJpegBuffer());
+
+		const outputRoot = join(dir, 'imessage-out');
+		const targetPath = join(outputRoot, '2020 Decade', '2024', '2024-06', '2024-06-15', '2024-06-15.jpg');
+		const planPath = join(dir, 'tiny.jsonl');
+		await writeFile(
+			planPath,
+			`${JSON.stringify({from: sourcePath, to: targetPath, kind: 'MISSING_DATE'})}\n`,
+			'utf8',
+		);
+
+		const result = await runCli(['--apply', planPath, '--output', outputRoot]);
+
+		expect(result.code).toBe(0);
+		expect(result.stderr).toBe('');
+		expect(result.stdout).toContain(`LINKED ${sourcePath} -> ${targetPath}`);
+
+		const undoLog = await readFile(join(outputRoot, 'photo-audit-renames.log'), 'utf8');
+		expect(undoLog).toContain(targetPath);
+	});
+
+	it('rejects --apply without --output', async () => {
+		const planPath = join(dir, 'empty.jsonl');
+		await writeFile(planPath, '', 'utf8');
+		const result = await runCli(['--apply', planPath]);
+		expect(result.code).not.toBe(0);
+		expect(result.stderr).toContain('--apply requires --output');
+	});
+
+	it('rejects --undo without --output', async () => {
+		const result = await runCli(['--undo']);
+		expect(result.code).not.toBe(0);
+		expect(result.stderr).toContain('--undo requires --output');
+	});
+
 	it('writes a plan file with entries derived from chat.db when given --plan', async () => {
 		const attachmentPath = join(dir, 'IMG.jpg');
 		await writeFile(attachmentPath, minimalJpegBuffer());

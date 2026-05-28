@@ -280,12 +280,20 @@ async function main(): Promise<void> {
 	}
 
 	const target = positionals[0];
-	if (target === undefined && !values.imessage) {
+	const isApplyOrUndo = values.undo || values.apply !== undefined;
+	if (isApplyOrUndo && values.output === undefined) {
+		console.error(
+			`Error: ${values.undo ? '--undo' : '--apply'} requires --output to locate the undo log and (for --apply) the alias destination.`,
+		);
+		process.exitCode = 1;
+		return;
+	}
+	if (!isApplyOrUndo && target === undefined && !values.imessage) {
 		console.error(USAGE);
 		process.exitCode = 1;
 		return;
 	}
-	if (values.imessage && values.fix && values.output === undefined) {
+	if (!isApplyOrUndo && values.imessage && values.fix && values.output === undefined) {
 		console.error(
 			'Error: --imessage --fix requires --output. Refusing to add hard-linked aliases inside ~/Library/Messages/Attachments/.',
 		);
