@@ -30,6 +30,11 @@ export function loadContacts(path: string): ContactsMap {
 	}
 	const map: ContactsMap = new Map();
 	for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+		// `chats` is a reserved key holding chat-id -> display-name overrides,
+		// not a handle mapping; skip it rather than rejecting the whole file.
+		if (key === 'chats') {
+			continue;
+		}
 		if (typeof value !== 'string') {
 			throw new Error(`Contacts JSON at ${path} has non-string value for handle ${key}`);
 		}

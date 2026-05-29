@@ -22,6 +22,12 @@ import {parseDateFromString} from './parseDate.ts';
 
 export type MediaItem = {kind: 'fs'; path: string} | {kind: 'imessage'; path: string; chat: AttachmentRow};
 
+export interface ImessageContext {
+	isFromMe: boolean;
+	handleId: string | null;
+	chatDisplayName: string | null;
+}
+
 export interface MediaItemContext {
 	sourceFolderName: string | null;
 	place: string | null;
@@ -29,6 +35,7 @@ export interface MediaItemContext {
 	finding: Finding;
 	cameraInfo: CameraInfo;
 	location: string | null;
+	imessage: ImessageContext | null;
 }
 
 /**
@@ -54,6 +61,11 @@ export async function contextFor(
 			finding: result.finding,
 			cameraInfo: result.cameraInfo,
 			location: result.location,
+			imessage: {
+				isFromMe: item.chat.isFromMe,
+				handleId: item.chat.handleId,
+				chatDisplayName: item.chat.chatDisplayName,
+			},
 		};
 	}
 	const result = await auditFile(exiftool, item.path, root, homeZone);
@@ -67,5 +79,6 @@ export async function contextFor(
 		finding: result.finding,
 		cameraInfo: result.cameraInfo,
 		location: result.location,
+		imessage: null,
 	};
 }

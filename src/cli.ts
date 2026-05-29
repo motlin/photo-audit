@@ -10,8 +10,10 @@ import type {Finding} from './classify.ts';
 import {formatDate} from './dateParts.ts';
 import {type ProposedRename} from './fix.ts';
 import {iterAttachments, openChatDb} from './imessage/chatDb.ts';
+import {type ContactsMap, loadContacts, resolveContact} from './imessage/contacts.ts';
+import {proposeImessageFilename} from './imessage/proposeImessageFilename.ts';
 import {contextFor, type MediaItem} from './mediaSource.ts';
-import {formatCameraSuffix, type CameraInfo} from './metadata.ts';
+import {formatCameraSuffix, formatImessageCameraSuffix, type CameraInfo} from './metadata.ts';
 import {computeOutputDirectory} from './outputPath.ts';
 import {type PlanEntry, readPlanFile, writePlanFile} from './plan.ts';
 import {probeHardLinkSupport} from './probeHardLink.ts';
@@ -40,6 +42,11 @@ metadata against the date in its filename. Folder dates are informational only
                  suffixes. Requires --output when combined with --fix.
   --db PATH      override the chat.db location (default
                  ~/Library/Messages/chat.db). Opened read-only.
+  --contacts PATH
+                 JSON file mapping iMessage handles to friendly names, used
+                 to label senders in --imessage proposed filenames. Default
+                 ~/.config/photo-audit/contacts.json. Missing file is OK;
+                 unmapped handles fall back to the raw handle string.
   --fix          add a correctly-dated hard-linked alias next to every
                  WRONG_DATE / MISSING_DATE file whose metadata is high-
                  confidence. Originals are preserved; the new alias points
@@ -155,6 +162,7 @@ interface FixableEntry {
 	cameraInfo: CameraInfo;
 	location: string | null;
 	sourceFolderName: string | null;
+	imessage?: {senderName: string | null; chatTitle: string | null};
 }
 
 interface PlanOptions {
@@ -170,15 +178,24 @@ interface PlanOptions {
  */
 function planLinksFromFindings(entries: readonly FixableEntry[], root: string, options: PlanOptions): PlanEntry[] {
 	const plan: PlanEntry[] = [];
-	for (const {finding, cameraInfo, location, sourceFolderName} of entries) {
+	for (const {finding, cameraInfo, location, sourceFolderName, imessage} of entries) {
 		if (finding.metadataConfidence === 'date-only') {
 			console.log(`SKIPPED (metadata is date-only): ${relative(root, finding.path)}`);
 			continue;
 		}
-		const proposed = proposeFilename(basename(finding.path), finding.metadataDate, {
-			stripCameraId: options.stripCameraId,
-			cameraSuffix: formatCameraSuffix(cameraInfo),
-		});
+		const proposed =
+			imessage === undefined
+				? proposeFilename(basename(finding.path), finding.metadataDate, {
+						stripCameraId: options.stripCameraId,
+						cameraSuffix: formatCameraSuffix(cameraInfo),
+					})
+				: proposeImessageFilename({
+						originalName: basename(finding.path),
+						date: finding.metadataDate,
+						senderName: imessage.senderName,
+						chatTitle: imessage.chatTitle,
+						cameraSuffix: formatImessageCameraSuffix(cameraInfo),
+					});
 		const targetDir =
 			options.outputRoot === null
 				? dirname(finding.path)
@@ -261,6 +278,7 @@ async function main(): Promise<void> {
 			output: {type: 'string'},
 			imessage: {type: 'boolean', default: false},
 			db: {type: 'string'},
+			contacts: {type: 'string'},
 			help: {type: 'boolean', short: 'h', default: false},
 		},
 	});
@@ -305,6 +323,8 @@ async function main(): Promise<void> {
 	const outputRoot = values.output === undefined ? null : resolve(values.output);
 	const undoLogPath = join(outputRoot ?? root, UNDO_LOG_NAME);
 	const dbPath = values.db ?? join(homedir(), 'Library', 'Messages', 'chat.db');
+	const contactsPath = values.contacts ?? join(homedir(), '.config', 'photo-audit', 'contacts.json');
+	const contacts: ContactsMap = values.imessage ? loadContacts(contactsPath) : new Map();
 
 	if (values.undo) {
 		await runUndo(outputRoot ?? root);
@@ -371,19 +391,42 @@ async function main(): Promise<void> {
 				break;
 			}
 			const ctx = await contextFor(exiftool, item, root, homeZone);
-			const {finding, location, cameraInfo, sourceFolderName} = ctx;
+			const {finding, location, cameraInfo, sourceFolderName, imessage} = ctx;
 			counts[finding.kind] += 1;
 			scanned += 1;
 
+			const imessageEntry =
+				imessage === null
+					? undefined
+					: {
+							senderName: imessage.isFromMe ? null : resolveContact(imessage.handleId, contacts),
+							chatTitle:
+								imessage.chatDisplayName === null || imessage.chatDisplayName === ''
+									? null
+									: imessage.chatDisplayName,
+						};
+
 			if (finding.kind === 'WRONG_DATE') {
 				printWrongDate(finding, root, location, cameraInfo, values['strip-camera-id']);
-				fixableEntries.push({finding, cameraInfo, location, sourceFolderName});
+				fixableEntries.push({
+					finding,
+					cameraInfo,
+					location,
+					sourceFolderName,
+					...(imessageEntry !== undefined && {imessage: imessageEntry}),
+				});
 			} else if (finding.kind === 'METADATA_SUSPECT') {
 				printMetadataSuspect(finding, root, location);
 			} else if (finding.kind === 'EDIT_DERIVED') {
 				printEditDerived(finding, root, location);
 			} else if (finding.kind === 'MISSING_DATE') {
-				fixableEntries.push({finding, cameraInfo, location, sourceFolderName});
+				fixableEntries.push({
+					finding,
+					cameraInfo,
+					location,
+					sourceFolderName,
+					...(imessageEntry !== undefined && {imessage: imessageEntry}),
+				});
 				if (values['show-all']) {
 					printMissingDate(finding, root, location, cameraInfo, values['strip-camera-id']);
 				}

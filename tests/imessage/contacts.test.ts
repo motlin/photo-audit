@@ -36,6 +36,21 @@ describe('loadContacts', () => {
 		writeFileSync(path, '{not valid json');
 		expect(() => loadContacts(path)).toThrow(path);
 	});
+
+	it('ignores the reserved "chats" key holding chat-id overrides', () => {
+		const path = join(dir, 'contacts.json');
+		writeFileSync(
+			path,
+			JSON.stringify({
+				'+18452168005': 'Vika',
+				chats: {chat100734652767048314: 'Motlins'},
+			}),
+		);
+		const result = loadContacts(path);
+		expect(result.get('+18452168005')).toBe('Vika');
+		expect(result.has('chats')).toBe(false);
+		expect(result.size).toBe(1);
+	});
 });
 
 describe('normalizeHandle', () => {

@@ -205,4 +205,117 @@ describe('cli --imessage', () => {
 		expect(entry.to).toContain(join(outputRoot, '2020 Decade', '2024', '2024-06', '2024-06-15 Family Trip'));
 		expect(entry.to.endsWith('.jpg')).toBe(true);
 	});
+
+	it('uses iMessage filename rules with --contacts: outgoing-in-group, mapped-incoming, unmapped-incoming', async () => {
+		const outgoingPath = join(dir, 'outgoing.jpg');
+		const mappedIncomingPath = join(dir, 'mapped.jpg');
+		const unmappedIncomingPath = join(dir, 'unmapped.jpg');
+		await writeFile(outgoingPath, minimalJpegBuffer());
+		await writeFile(mappedIncomingPath, minimalJpegBuffer());
+		await writeFile(unmappedIncomingPath, minimalJpegBuffer());
+
+		const dbPath = join(dir, 'chat.db');
+		const db = new BetterSqlite3(dbPath);
+		try {
+			createChatDbSchema(db);
+			db.prepare('INSERT INTO chat (ROWID, chat_identifier, display_name) VALUES (?, ?, ?)').run(
+				10,
+				'chat101',
+				'Family Trip',
+			);
+			db.prepare('INSERT INTO handle (ROWID, id) VALUES (?, ?)').run(20, '+15550001111');
+			db.prepare('INSERT INTO handle (ROWID, id) VALUES (?, ?)').run(21, '+15559998888');
+
+			// Three attachments / messages: outgoing in group, mapped incoming, unmapped incoming.
+			const baseUnix = 1_718_460_645n; // 2024-06-15 14:30:45 UTC
+			db.prepare(
+				'INSERT INTO attachment (ROWID, filename, transfer_name, mime_type, created_date, is_sticker) VALUES (?, ?, ?, ?, ?, ?)',
+			).run(1, outgoingPath, 'IMG.jpg', 'image/jpeg', unixSecondsToCocoaSeconds(baseUnix), 0);
+			db.prepare(
+				'INSERT INTO attachment (ROWID, filename, transfer_name, mime_type, created_date, is_sticker) VALUES (?, ?, ?, ?, ?, ?)',
+			).run(2, mappedIncomingPath, 'IMG.jpg', 'image/jpeg', unixSecondsToCocoaSeconds(baseUnix + 60n), 0);
+			db.prepare(
+				'INSERT INTO attachment (ROWID, filename, transfer_name, mime_type, created_date, is_sticker) VALUES (?, ?, ?, ?, ?, ?)',
+			).run(3, unmappedIncomingPath, 'IMG.jpg', 'image/jpeg', unixSecondsToCocoaSeconds(baseUnix + 120n), 0);
+
+			// Outgoing message: is_from_me = 1, handle_id = NULL.
+			db.prepare('INSERT INTO message (ROWID, date, is_from_me, handle_id) VALUES (?, ?, ?, ?)').run(
+				100,
+				unixSecondsToCocoaNanos(baseUnix),
+				1,
+				null,
+			);
+			// Mapped incoming: handle 20 (+15550001111 -> "Alice").
+			db.prepare('INSERT INTO message (ROWID, date, is_from_me, handle_id) VALUES (?, ?, ?, ?)').run(
+				101,
+				unixSecondsToCocoaNanos(baseUnix + 60n),
+				0,
+				20,
+			);
+			// Unmapped incoming: handle 21 (+15559998888 -> no contact entry).
+			db.prepare('INSERT INTO message (ROWID, date, is_from_me, handle_id) VALUES (?, ?, ?, ?)').run(
+				102,
+				unixSecondsToCocoaNanos(baseUnix + 120n),
+				0,
+				21,
+			);
+
+			db.prepare('INSERT INTO message_attachment_join (message_id, attachment_id) VALUES (?, ?)').run(100, 1);
+			db.prepare('INSERT INTO message_attachment_join (message_id, attachment_id) VALUES (?, ?)').run(101, 2);
+			db.prepare('INSERT INTO message_attachment_join (message_id, attachment_id) VALUES (?, ?)').run(102, 3);
+			db.prepare('INSERT INTO chat_message_join (chat_id, message_id) VALUES (?, ?)').run(10, 100);
+			db.prepare('INSERT INTO chat_message_join (chat_id, message_id) VALUES (?, ?)').run(10, 101);
+			db.prepare('INSERT INTO chat_message_join (chat_id, message_id) VALUES (?, ?)').run(10, 102);
+		} finally {
+			db.close();
+		}
+
+		const contactsPath = join(dir, 'contacts.json');
+		await writeFile(contactsPath, JSON.stringify({'+15550001111': 'Alice'}), 'utf8');
+
+		const planPath = join(dir, 'plan.jsonl');
+		const outputRoot = join(dir, 'output');
+
+		const result = await runCli([
+			'--imessage',
+			'--db',
+			dbPath,
+			'--contacts',
+			contactsPath,
+			'--plan',
+			planPath,
+			'--output',
+			outputRoot,
+			'--zone',
+			'America/New_York',
+		]);
+
+		expect(result.code).toBe(0);
+
+		const planText = await readFile(planPath, 'utf8');
+		const lines = planText.split('\n').filter((line) => line.trim() !== '');
+		expect(lines).toHaveLength(3);
+		const entries = lines.map((line) => JSON.parse(line) as {from: string; to: string; kind: string});
+		const byFrom = new Map(entries.map((entry) => [entry.from, entry]));
+
+		// Outgoing in group: no sender slot, chat title shown.
+		// 1_718_460_645 unix seconds = 2024-06-15 14:10:45 UTC -> 10:10:45 EDT.
+		// The original stem "outgoing" is human-typed, so it is preserved.
+		const outgoingEntry = byFrom.get(outgoingPath);
+		expect(outgoingEntry).toBeDefined();
+		const outgoingName = outgoingEntry!.to.split('/').pop() ?? '';
+		expect(outgoingName).toBe('2024-06-15 10.10.45 (Family Trip) outgoing.jpg');
+
+		// Incoming with mapped contact: friendly name shown.
+		const mappedEntry = byFrom.get(mappedIncomingPath);
+		expect(mappedEntry).toBeDefined();
+		const mappedName = mappedEntry!.to.split('/').pop() ?? '';
+		expect(mappedName).toBe('2024-06-15 10.11.45 (Alice) (Family Trip) mapped.jpg');
+
+		// Incoming with unmapped handle: raw handle shown in parens.
+		const unmappedEntry = byFrom.get(unmappedIncomingPath);
+		expect(unmappedEntry).toBeDefined();
+		const unmappedName = unmappedEntry!.to.split('/').pop() ?? '';
+		expect(unmappedName).toBe('2024-06-15 10.12.45 (+15559998888) (Family Trip) unmapped.jpg');
+	});
 });
