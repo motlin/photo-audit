@@ -5,6 +5,7 @@ import {
 	extractMetadataDate,
 	extractDateOrEdit,
 	formatCameraSuffix,
+	formatImessageCameraSuffix,
 	toLocalDateParts,
 } from '../src/metadata.ts';
 
@@ -463,41 +464,181 @@ describe('extractDateOrEdit', () => {
 describe('extractCameraInfo', () => {
 	it('returns trimmed Make and Model when both are present', () => {
 		const tags = {Make: 'Apple', Model: 'iPhone 15 Pro'} as unknown as Tags;
-		expect(extractCameraInfo(tags)).toEqual({make: 'Apple', model: 'iPhone 15 Pro'});
+		expect(extractCameraInfo(tags)).toEqual({
+			make: 'Apple',
+			model: 'iPhone 15 Pro',
+			lensModel: null,
+			focalLengthIn35mmFormat: null,
+		});
 	});
 
 	it('returns null fields when the tags are absent', () => {
-		expect(extractCameraInfo({} as Tags)).toEqual({make: null, model: null});
+		expect(extractCameraInfo({} as Tags)).toEqual({
+			make: null,
+			model: null,
+			lensModel: null,
+			focalLengthIn35mmFormat: null,
+		});
 	});
 
 	it('treats empty strings and whitespace-only values as null', () => {
-		const tags = {Make: '   ', Model: ''} as unknown as Tags;
-		expect(extractCameraInfo(tags)).toEqual({make: null, model: null});
+		const tags = {Make: '   ', Model: '', LensModel: '   '} as unknown as Tags;
+		expect(extractCameraInfo(tags)).toEqual({
+			make: null,
+			model: null,
+			lensModel: null,
+			focalLengthIn35mmFormat: null,
+		});
+	});
+
+	it('extracts LensModel and FocalLengthIn35mmFormat from a string like "24 mm"', () => {
+		const tags = {
+			Make: 'Apple',
+			Model: 'iPhone 16 Pro',
+			LensModel: 'iPhone 16 Pro back camera 6.765mm f/1.78',
+			FocalLengthIn35mmFormat: '24 mm',
+		} as unknown as Tags;
+		expect(extractCameraInfo(tags)).toEqual({
+			make: 'Apple',
+			model: 'iPhone 16 Pro',
+			lensModel: 'iPhone 16 Pro back camera 6.765mm f/1.78',
+			focalLengthIn35mmFormat: 24,
+		});
+	});
+
+	it('accepts a bare number for FocalLengthIn35mmFormat', () => {
+		const tags = {
+			Make: 'NIKON CORPORATION',
+			Model: 'D850',
+			LensModel: '50.0 mm f/1.4',
+			FocalLengthIn35mmFormat: 50,
+		} as unknown as Tags;
+		expect(extractCameraInfo(tags).focalLengthIn35mmFormat).toBe(50);
 	});
 });
 
 describe('formatCameraSuffix', () => {
+	const emptyLens = {lensModel: null, focalLengthIn35mmFormat: null};
+
 	it('returns null when both make and model are null', () => {
-		expect(formatCameraSuffix({make: null, model: null})).toBeNull();
+		expect(formatCameraSuffix({make: null, model: null, ...emptyLens})).toBeNull();
 	});
 
 	it('returns just the model when make is null', () => {
-		expect(formatCameraSuffix({make: null, model: 'iPhone 15 Pro'})).toBe('iPhone 15 Pro');
+		expect(formatCameraSuffix({make: null, model: 'iPhone 15 Pro', ...emptyLens})).toBe('iPhone 15 Pro');
 	});
 
 	it('returns just the make when model is null', () => {
-		expect(formatCameraSuffix({make: 'Canon', model: null})).toBe('Canon');
+		expect(formatCameraSuffix({make: 'Canon', model: null, ...emptyLens})).toBe('Canon');
 	});
 
 	it('combines make and model as "Make Model"', () => {
-		expect(formatCameraSuffix({make: 'Apple', model: 'iPhone 15 Pro'})).toBe('Apple iPhone 15 Pro');
+		expect(formatCameraSuffix({make: 'Apple', model: 'iPhone 15 Pro', ...emptyLens})).toBe('Apple iPhone 15 Pro');
 	});
 
 	it('drops the make when the model already starts with it (e.g. Canon Canon EOS 5D)', () => {
-		expect(formatCameraSuffix({make: 'Canon', model: 'Canon EOS 5D Mark IV'})).toBe('Canon EOS 5D Mark IV');
+		expect(formatCameraSuffix({make: 'Canon', model: 'Canon EOS 5D Mark IV', ...emptyLens})).toBe(
+			'Canon EOS 5D Mark IV',
+		);
 	});
 
 	it('strips a "CORPORATION" suffix from the make (e.g. NIKON CORPORATION D850)', () => {
-		expect(formatCameraSuffix({make: 'NIKON CORPORATION', model: 'D850'})).toBe('NIKON D850');
+		expect(formatCameraSuffix({make: 'NIKON CORPORATION', model: 'D850', ...emptyLens})).toBe('NIKON D850');
+	});
+});
+
+describe('formatImessageCameraSuffix', () => {
+	const emptyLens = {lensModel: null, focalLengthIn35mmFormat: null};
+
+	it('formats an iPhone with FocalLengthIn35mmFormat as "<Model> <orientation> <N>mm"', () => {
+		expect(
+			formatImessageCameraSuffix({
+				make: 'Apple',
+				model: 'iPhone 16 Pro',
+				lensModel: 'iPhone 16 Pro back camera 6.765mm f/1.78',
+				focalLengthIn35mmFormat: 24,
+			}),
+		).toBe('iPhone 16 Pro back 24mm');
+	});
+
+	it('formats a front-camera iPhone using the front orientation token', () => {
+		expect(
+			formatImessageCameraSuffix({
+				make: 'Apple',
+				model: 'iPhone 13 Pro',
+				lensModel: 'iPhone 13 Pro front camera 2.71mm f/2.2',
+				focalLengthIn35mmFormat: 23,
+			}),
+		).toBe('iPhone 13 Pro front 23mm');
+	});
+
+	it('formats an older iPhone (iPhone 6) the same way', () => {
+		expect(
+			formatImessageCameraSuffix({
+				make: 'Apple',
+				model: 'iPhone 6',
+				lensModel: 'iPhone 6 back camera 4.15mm f/2.2',
+				focalLengthIn35mmFormat: 29,
+			}),
+		).toBe('iPhone 6 back 29mm');
+	});
+
+	it('falls back to plain Model when an iPhone has no FocalLengthIn35mmFormat', () => {
+		expect(
+			formatImessageCameraSuffix({
+				make: 'Apple',
+				model: 'iPhone X',
+				lensModel: null,
+				focalLengthIn35mmFormat: null,
+			}),
+		).toBe('iPhone X');
+	});
+
+	it('formats a Nikon D850 with a 50mm f/1.4 lens', () => {
+		expect(
+			formatImessageCameraSuffix({
+				make: 'Nikon',
+				model: 'D850',
+				lensModel: '50.0 mm f/1.4',
+				focalLengthIn35mmFormat: 50,
+			}),
+		).toBe('Nikon D850, 50mm f1.4');
+	});
+
+	it('title-cases an all-caps Make like "NIKON CORPORATION"', () => {
+		expect(
+			formatImessageCameraSuffix({
+				make: 'NIKON CORPORATION',
+				model: 'D850',
+				lensModel: '50.0 mm f/1.4',
+				focalLengthIn35mmFormat: 50,
+			}),
+		).toBe('Nikon D850, 50mm f1.4');
+	});
+
+	it('handles a Samsung SM-G935V with no lens info', () => {
+		expect(
+			formatImessageCameraSuffix({
+				make: 'SAMSUNG',
+				model: 'SM-G935V',
+				lensModel: null,
+				focalLengthIn35mmFormat: null,
+			}),
+		).toBe('Samsung SM-G935V');
+	});
+
+	it('returns just "<Make> <Model>" for a Canon body with no LensModel', () => {
+		expect(
+			formatImessageCameraSuffix({
+				make: 'Canon',
+				model: 'EOS 5D Mark IV',
+				lensModel: null,
+				focalLengthIn35mmFormat: 50,
+			}),
+		).toBe('Canon EOS 5D Mark IV');
+	});
+
+	it('returns null when there is no camera info at all', () => {
+		expect(formatImessageCameraSuffix({make: null, model: null, ...emptyLens})).toBeNull();
 	});
 });

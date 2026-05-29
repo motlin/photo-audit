@@ -332,6 +332,8 @@ export function extractDateOrEdit(tags: Tags, homeZone: string): DateOrEdit | nu
 export interface CameraInfo {
 	make: string | null;
 	model: string | null;
+	lensModel: string | null;
+	focalLengthIn35mmFormat: number | null;
 }
 
 function trimOrNull(value: unknown): string | null {
@@ -342,8 +344,36 @@ function trimOrNull(value: unknown): string | null {
 	return trimmed === '' ? null : trimmed;
 }
 
+/**
+ * Parse a `FocalLengthIn35mmFormat` value into a focal-length integer in
+ * millimeters. The tag comes back as a string like `"24 mm"` from
+ * exiftool-vendored, but older builds (and the raw `-j` JSON) can deliver a
+ * bare number, so both shapes are accepted. Returns null when no usable
+ * numeric prefix is present.
+ */
+function parseFocalLength(value: unknown): number | null {
+	if (typeof value === 'number' && Number.isFinite(value)) {
+		return Math.round(value);
+	}
+	if (typeof value === 'string') {
+		const match = /^\s*(-?\d+(?:\.\d+)?)/.exec(value);
+		if (match !== null) {
+			const parsed = Number(match[1]);
+			if (Number.isFinite(parsed)) {
+				return Math.round(parsed);
+			}
+		}
+	}
+	return null;
+}
+
 export function extractCameraInfo(tags: Tags): CameraInfo {
-	return {make: trimOrNull(tags.Make), model: trimOrNull(tags.Model)};
+	return {
+		make: trimOrNull(tags.Make),
+		model: trimOrNull(tags.Model),
+		lensModel: trimOrNull(tags.LensModel),
+		focalLengthIn35mmFormat: parseFocalLength(tags.FocalLengthIn35mmFormat),
+	};
 }
 
 /**
@@ -369,4 +399,103 @@ export function formatCameraSuffix(info: CameraInfo): string | null {
 		return info.model;
 	}
 	return `${cleanedMake} ${info.model}`;
+}
+
+/**
+ * Title-case an all-caps Make token (`NIKON` -> `Nikon`, `SAMSUNG` -> `Samsung`)
+ * while leaving mixed-case values (`Canon`, `Apple`, `SONY` is already caps)
+ * untouched if they already contain a lowercase letter. A make like
+ * `NIKON CORPORATION` should already have had `CORPORATION` stripped before
+ * reaching here.
+ */
+function titleCaseAllCaps(make: string): string {
+	return make
+		.split(/\s+/)
+		.map((token) => {
+			if (token === '') {
+				return token;
+			}
+			if (/[a-z]/.test(token)) {
+				return token;
+			}
+			return token.charAt(0) + token.slice(1).toLowerCase();
+		})
+		.join(' ');
+}
+
+/**
+ * Strip the `back` / `front` orientation token from an iPhone `LensModel`
+ * string like `iPhone 16 Pro back camera 6.765mm f/1.78`. Returns the matched
+ * orientation token (`back` or `front`), or null when neither is present.
+ */
+function iphoneLensOrientation(lensModel: string): 'back' | 'front' | null {
+	const lower = lensModel.toLowerCase();
+	if (/\bback\b/.test(lower)) {
+		return 'back';
+	}
+	if (/\bfront\b/.test(lower)) {
+		return 'front';
+	}
+	return null;
+}
+
+/**
+ * Compact a verbose LensModel like `50.0 mm f/1.4` into `50mm f1.4`:
+ *  - drop a trailing `.0` after the focal length
+ *  - replace `f/` with `f`
+ *  - collapse internal whitespace
+ *  - remove the space between the focal length number and `mm`
+ */
+function simplifyLensModel(lensModel: string): string {
+	return lensModel
+		.replace(/(\d+)\.0(?=\s*mm\b)/g, '$1')
+		.replace(/(\d+(?:\.\d+)?)\s*mm\b/g, '$1mm')
+		.replace(/f\//g, 'f')
+		.replace(/\s+/g, ' ')
+		.trim();
+}
+
+/**
+ * Strip the noisy `CORPORATION` / `INC` / `CO., LTD` company-suffix from a
+ * Make string, mirroring {@link formatCameraSuffix}'s behavior.
+ */
+function cleanMake(make: string): string {
+	return make.replace(/\s+(CORPORATION|INC\.?|CO\.?,? LTD\.?)$/i, '').trim();
+}
+
+/**
+ * Format the camera info for use inside an iMessage filename's camera bracket.
+ *
+ * Three output shapes are produced:
+ *  1. iPhone with FocalLengthIn35mmFormat: `iPhone 16 Pro back 24mm`
+ *  2. Non-iPhone with LensModel:           `Nikon D850, 50mm f1.4`
+ *  3. Has Make/Model only (no lens):       `Apple iPhone X`
+ *  4. No EXIF at all:                      null (caller omits the bracket)
+ *
+ * This is distinct from {@link formatCameraSuffix}, which keeps the older
+ * `[Apple iPhone 15 Pro]` shape used by the filesystem audit code path.
+ */
+export function formatImessageCameraSuffix(info: CameraInfo): string | null {
+	const isIphone = info.model !== null && info.model.toLowerCase().includes('iphone');
+	if (isIphone) {
+		const orientation = info.lensModel === null ? null : iphoneLensOrientation(info.lensModel);
+		if (orientation !== null && info.focalLengthIn35mmFormat !== null) {
+			return `${info.model!} ${orientation} ${info.focalLengthIn35mmFormat}mm`;
+		}
+		return info.model;
+	}
+
+	const base = formatCameraSuffix({
+		make: info.make === null ? null : titleCaseAllCaps(cleanMake(info.make)),
+		model: info.model,
+		lensModel: null,
+		focalLengthIn35mmFormat: null,
+	});
+	if (base === null) {
+		return null;
+	}
+	if (info.lensModel === null) {
+		return base;
+	}
+	return `${base}, ${simplifyLensModel(info.lensModel)}`;
 }
