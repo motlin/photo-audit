@@ -469,6 +469,7 @@ describe('extractCameraInfo', () => {
 			model: 'iPhone 15 Pro',
 			lensModel: null,
 			focalLengthIn35mmFormat: null,
+			focalLength: null,
 		});
 	});
 
@@ -478,6 +479,7 @@ describe('extractCameraInfo', () => {
 			model: null,
 			lensModel: null,
 			focalLengthIn35mmFormat: null,
+			focalLength: null,
 		});
 	});
 
@@ -488,37 +490,48 @@ describe('extractCameraInfo', () => {
 			model: null,
 			lensModel: null,
 			focalLengthIn35mmFormat: null,
+			focalLength: null,
 		});
 	});
 
-	it('extracts LensModel and FocalLengthIn35mmFormat from a string like "24 mm"', () => {
+	it('extracts LensModel, FocalLengthIn35mmFormat, and physical FocalLength', () => {
 		const tags = {
 			Make: 'Apple',
 			Model: 'iPhone 16 Pro',
 			LensModel: 'iPhone 16 Pro back camera 6.765mm f/1.78',
 			FocalLengthIn35mmFormat: '24 mm',
+			FocalLength: '6.765 mm',
 		} as unknown as Tags;
 		expect(extractCameraInfo(tags)).toEqual({
 			make: 'Apple',
 			model: 'iPhone 16 Pro',
 			lensModel: 'iPhone 16 Pro back camera 6.765mm f/1.78',
 			focalLengthIn35mmFormat: 24,
+			focalLength: 6.765,
 		});
 	});
 
-	it('accepts a bare number for FocalLengthIn35mmFormat', () => {
+	it('accepts a bare number for FocalLengthIn35mmFormat and FocalLength', () => {
 		const tags = {
 			Make: 'NIKON CORPORATION',
 			Model: 'D850',
 			LensModel: '50.0 mm f/1.4',
 			FocalLengthIn35mmFormat: 50,
+			FocalLength: 50,
 		} as unknown as Tags;
-		expect(extractCameraInfo(tags).focalLengthIn35mmFormat).toBe(50);
+		const info = extractCameraInfo(tags);
+		expect(info.focalLengthIn35mmFormat).toBe(50);
+		expect(info.focalLength).toBe(50);
+	});
+
+	it('preserves decimals on physical FocalLength (does not round)', () => {
+		const tags = {FocalLength: 15.7} as unknown as Tags;
+		expect(extractCameraInfo(tags).focalLength).toBe(15.7);
 	});
 });
 
 describe('formatCameraSuffix', () => {
-	const emptyLens = {lensModel: null, focalLengthIn35mmFormat: null};
+	const emptyLens = {lensModel: null, focalLengthIn35mmFormat: null, focalLength: null};
 
 	it('returns null when both make and model are null', () => {
 		expect(formatCameraSuffix({make: null, model: null, ...emptyLens})).toBeNull();
@@ -548,50 +561,114 @@ describe('formatCameraSuffix', () => {
 });
 
 describe('formatImessageCameraSuffix', () => {
-	const emptyLens = {lensModel: null, focalLengthIn35mmFormat: null};
+	const emptyLens = {lensModel: null, focalLengthIn35mmFormat: null, focalLength: null};
 
-	it('formats an iPhone with FocalLengthIn35mmFormat as "<Model> <orientation> <N>mm"', () => {
+	it('labels a 5x tele iPhone (16 Pro Max, FocalLength 15.7) as "5x" instead of cropped 405mm', () => {
+		expect(
+			formatImessageCameraSuffix({
+				make: 'Apple',
+				model: 'iPhone 16 Pro Max',
+				lensModel: 'iPhone 16 Pro Max back camera 15.7mm f/2.8',
+				focalLengthIn35mmFormat: 405,
+				focalLength: 15.7,
+			}),
+		).toBe('iPhone 16 Pro Max 5x');
+	});
+
+	it('labels a 1x main iPhone lens (16 Pro, FocalLength 6.765, 35mm 24) as "1x"', () => {
 		expect(
 			formatImessageCameraSuffix({
 				make: 'Apple',
 				model: 'iPhone 16 Pro',
 				lensModel: 'iPhone 16 Pro back camera 6.765mm f/1.78',
 				focalLengthIn35mmFormat: 24,
+				focalLength: 6.765,
 			}),
-		).toBe('iPhone 16 Pro back 24mm');
+		).toBe('iPhone 16 Pro 1x');
 	});
 
-	it('formats a front-camera iPhone using the front orientation token', () => {
+	it('labels a 2x tele iPhone (13 Pro, FocalLength 6, 35mm 52) as "2x"', () => {
+		expect(
+			formatImessageCameraSuffix({
+				make: 'Apple',
+				model: 'iPhone 13 Pro',
+				lensModel: 'iPhone 13 Pro back camera 6mm f/2.8',
+				focalLengthIn35mmFormat: 52,
+				focalLength: 6,
+			}),
+		).toBe('iPhone 13 Pro 2x');
+	});
+
+	it('labels a front-camera iPhone as "front" purely from the LensModel token', () => {
 		expect(
 			formatImessageCameraSuffix({
 				make: 'Apple',
 				model: 'iPhone 13 Pro',
 				lensModel: 'iPhone 13 Pro front camera 2.71mm f/2.2',
 				focalLengthIn35mmFormat: 23,
+				focalLength: 2.71,
 			}),
-		).toBe('iPhone 13 Pro front 23mm');
+		).toBe('iPhone 13 Pro front');
 	});
 
-	it('formats an older iPhone (iPhone 6) the same way', () => {
+	it('labels an older iPhone (iPhone 6, FocalLength 4.15, 35mm 29) as "1x"', () => {
 		expect(
 			formatImessageCameraSuffix({
 				make: 'Apple',
 				model: 'iPhone 6',
 				lensModel: 'iPhone 6 back camera 4.15mm f/2.2',
 				focalLengthIn35mmFormat: 29,
+				focalLength: 4.15,
 			}),
-		).toBe('iPhone 6 back 29mm');
+		).toBe('iPhone 6 1x');
 	});
 
-	it('falls back to plain Model when an iPhone has no FocalLengthIn35mmFormat', () => {
+	it('labels a 0.5x ultrawide iPhone (FocalLength 2.22) as "0.5x"', () => {
+		expect(
+			formatImessageCameraSuffix({
+				make: 'Apple',
+				model: 'iPhone X',
+				lensModel: 'iPhone X back camera 2.22mm f/2.4',
+				focalLengthIn35mmFormat: 13,
+				focalLength: 2.22,
+			}),
+		).toBe('iPhone X 0.5x');
+	});
+
+	it('labels a 3x tele iPhone (FocalLength 9, 35mm 77) as "3x"', () => {
+		expect(
+			formatImessageCameraSuffix({
+				make: 'Apple',
+				model: 'iPhone 14 Pro',
+				lensModel: 'iPhone 14 Pro back camera 9mm f/2.8',
+				focalLengthIn35mmFormat: 77,
+				focalLength: 9,
+			}),
+		).toBe('iPhone 14 Pro 3x');
+	});
+
+	it('drops the lens label on an iPhone with no FocalLength (e.g. videos)', () => {
 		expect(
 			formatImessageCameraSuffix({
 				make: 'Apple',
 				model: 'iPhone X',
 				lensModel: null,
 				focalLengthIn35mmFormat: null,
+				focalLength: null,
 			}),
 		).toBe('iPhone X');
+	});
+
+	it('falls back to bare "<N>mm" for an unknown iPhone wide-range crop (FocalLength 5, 35mm 80)', () => {
+		expect(
+			formatImessageCameraSuffix({
+				make: 'Apple',
+				model: 'iPhone X',
+				lensModel: 'iPhone X back camera 5mm f/2.4',
+				focalLengthIn35mmFormat: 80,
+				focalLength: 5,
+			}),
+		).toBe('iPhone X 80mm');
 	});
 
 	it('formats a Nikon D850 with a 50mm f/1.4 lens', () => {
@@ -601,6 +678,7 @@ describe('formatImessageCameraSuffix', () => {
 				model: 'D850',
 				lensModel: '50.0 mm f/1.4',
 				focalLengthIn35mmFormat: 50,
+				focalLength: 50,
 			}),
 		).toBe('Nikon D850, 50mm f1.4');
 	});
@@ -612,6 +690,7 @@ describe('formatImessageCameraSuffix', () => {
 				model: 'D850',
 				lensModel: '50.0 mm f/1.4',
 				focalLengthIn35mmFormat: 50,
+				focalLength: 50,
 			}),
 		).toBe('Nikon D850, 50mm f1.4');
 	});
@@ -623,6 +702,7 @@ describe('formatImessageCameraSuffix', () => {
 				model: 'SM-G935V',
 				lensModel: null,
 				focalLengthIn35mmFormat: null,
+				focalLength: null,
 			}),
 		).toBe('Samsung SM-G935V');
 	});
@@ -634,6 +714,7 @@ describe('formatImessageCameraSuffix', () => {
 				model: 'EOS 5D Mark IV',
 				lensModel: null,
 				focalLengthIn35mmFormat: 50,
+				focalLength: 50,
 			}),
 		).toBe('Canon EOS 5D Mark IV');
 	});

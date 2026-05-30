@@ -334,6 +334,13 @@ export interface CameraInfo {
 	model: string | null;
 	lensModel: string | null;
 	focalLengthIn35mmFormat: number | null;
+	/**
+	 * Physical lens focal length in millimeters (from EXIF `FocalLength`). For
+	 * iPhones this is what identifies the actual lens (e.g. 15.7mm for the 5x
+	 * tele); {@link CameraInfo.focalLengthIn35mmFormat} is post-crop and can be
+	 * misleading on Apple's digital zoom modes. Null when the tag is absent.
+	 */
+	focalLength: number | null;
 }
 
 function trimOrNull(value: unknown): string | null {
@@ -345,26 +352,45 @@ function trimOrNull(value: unknown): string | null {
 }
 
 /**
- * Parse a `FocalLengthIn35mmFormat` value into a focal-length integer in
- * millimeters. The tag comes back as a string like `"24 mm"` from
- * exiftool-vendored, but older builds (and the raw `-j` JSON) can deliver a
- * bare number, so both shapes are accepted. Returns null when no usable
- * numeric prefix is present.
+ * Pull a finite number out of an exiftool-vendored focal-length tag value,
+ * which can arrive as a bare number or as a string like `"24 mm"` / `"15.7 mm"`.
+ * Returns the raw decimal value; callers that want an integer round themselves.
  */
-function parseFocalLength(value: unknown): number | null {
+function parseFocalLengthMm(value: unknown): number | null {
 	if (typeof value === 'number' && Number.isFinite(value)) {
-		return Math.round(value);
+		return value;
 	}
 	if (typeof value === 'string') {
 		const match = /^\s*(-?\d+(?:\.\d+)?)/.exec(value);
 		if (match !== null) {
 			const parsed = Number(match[1]);
 			if (Number.isFinite(parsed)) {
-				return Math.round(parsed);
+				return parsed;
 			}
 		}
 	}
 	return null;
+}
+
+/**
+ * Parse a `FocalLengthIn35mmFormat` value into an integer millimeter focal
+ * length. The 35mm equivalent is conventionally displayed as an integer ("24
+ * mm", "50 mm"), so the parsed value is rounded.
+ */
+function parseFocalLength(value: unknown): number | null {
+	const raw = parseFocalLengthMm(value);
+	return raw === null ? null : Math.round(raw);
+}
+
+/**
+ * Parse a physical `FocalLength` value into a millimeter number, preserving
+ * decimals (unlike {@link parseFocalLength}, which rounds the 35mm-equivalent
+ * value). iPhone lenses report values like `6.765` and `15.7` that must NOT be
+ * rounded — the iPhone lens classifier depends on whether the value is just
+ * under or just over the 7mm threshold between the wide and tele groupings.
+ */
+function parsePhysicalFocalLength(value: unknown): number | null {
+	return parseFocalLengthMm(value);
 }
 
 export function extractCameraInfo(tags: Tags): CameraInfo {
@@ -373,6 +399,7 @@ export function extractCameraInfo(tags: Tags): CameraInfo {
 		model: trimOrNull(tags.Model),
 		lensModel: trimOrNull(tags.LensModel),
 		focalLengthIn35mmFormat: parseFocalLength(tags.FocalLengthIn35mmFormat),
+		focalLength: parsePhysicalFocalLength(tags.FocalLength),
 	};
 }
 
@@ -424,19 +451,63 @@ function titleCaseAllCaps(make: string): string {
 }
 
 /**
- * Strip the `back` / `front` orientation token from an iPhone `LensModel`
- * string like `iPhone 16 Pro back camera 6.765mm f/1.78`. Returns the matched
- * orientation token (`back` or `front`), or null when neither is present.
+ * Apple-marketing lens label for an iPhone camera, derived from the physical
+ * `FocalLength` and the LensModel's front/back orientation. Mirrors what the
+ * Camera app shows: `0.5x`, `1x`, `2x`, `3x`, `5x`, or `front`.
+ *
+ * The classifier prefers the LensModel-orientation hint first (the front
+ * camera has a very narrow physical focal range that overlaps with 0.5x and
+ * 1x rear modes on older phones, so we trust the explicit `front` token when
+ * it is present). After that it bands the physical focal length:
+ *
+ *   <= 3 mm                   -> `0.5x`  (ultrawide)
+ *   > 12 mm                   -> `5x`    (the 5x tele on 15 Pro Max / 16 Pro)
+ *   7..12 mm inclusive        -> `3x`    (the 3x tele)
+ *   3..7 mm (exclusive of 7)  -> wide-lens range; disambiguated by the 35mm
+ *                                 equivalent to detect digital crop modes:
+ *       22..32 -> `1x`
+ *       45..60 -> `2x`
+ *       60..80 -> `3x`
+ *       else   -> bare `Nmm` using the 35mm-equivalent (covers oddball
+ *                 crops that don't match a marketing label)
+ *
+ * Returns null when there is no usable lens information (e.g. videos with
+ * neither a physical focal length nor a front-camera marker), so the caller
+ * can drop the lens label entirely.
  */
-function iphoneLensOrientation(lensModel: string): 'back' | 'front' | null {
-	const lower = lensModel.toLowerCase();
-	if (/\bback\b/.test(lower)) {
-		return 'back';
-	}
-	if (/\bfront\b/.test(lower)) {
+function iphoneLensLabel(
+	lensModel: string | null,
+	focalLength: number | null,
+	focalLength35mm: number | null,
+): string | null {
+	if (lensModel !== null && /\bfront\b/i.test(lensModel)) {
 		return 'front';
 	}
-	return null;
+	if (focalLength === null) {
+		return null;
+	}
+	if (focalLength <= 3) {
+		return '0.5x';
+	}
+	if (focalLength > 12) {
+		return '5x';
+	}
+	if (focalLength >= 7 && focalLength <= 12) {
+		return '3x';
+	}
+	if (focalLength35mm === null) {
+		return null;
+	}
+	if (focalLength35mm >= 22 && focalLength35mm <= 32) {
+		return '1x';
+	}
+	if (focalLength35mm >= 45 && focalLength35mm <= 60) {
+		return '2x';
+	}
+	if (focalLength35mm > 60 && focalLength35mm < 80) {
+		return '3x';
+	}
+	return `${focalLength35mm}mm`;
 }
 
 /**
@@ -467,10 +538,16 @@ function cleanMake(make: string): string {
  * Format the camera info for use inside an iMessage filename's camera bracket.
  *
  * Three output shapes are produced:
- *  1. iPhone with FocalLengthIn35mmFormat: `iPhone 16 Pro back 24mm`
- *  2. Non-iPhone with LensModel:           `Nikon D850, 50mm f1.4`
- *  3. Has Make/Model only (no lens):       `Apple iPhone X`
- *  4. No EXIF at all:                      null (caller omits the bracket)
+ *  1. iPhone with a recognized lens: `iPhone 16 Pro Max 5x` / `iPhone X front`
+ *  2. Non-iPhone with LensModel:     `Nikon D850, 50mm f1.4`
+ *  3. Has Make/Model only (no lens): `Apple iPhone X`
+ *  4. No EXIF at all:                null (caller omits the bracket)
+ *
+ * For iPhones the lens label comes from {@link iphoneLensLabel}: an Apple
+ * marketing zoom name (`0.5x` / `1x` / `2x` / `3x` / `5x`) keyed off the
+ * physical `FocalLength`, or `front` when the LensModel says so. This avoids
+ * the misleading "405mm" label that 35mm-equivalent gives for digital crops
+ * of the 5x tele lens.
  *
  * This is distinct from {@link formatCameraSuffix}, which keeps the older
  * `[Apple iPhone 15 Pro]` shape used by the filesystem audit code path.
@@ -478,11 +555,11 @@ function cleanMake(make: string): string {
 export function formatImessageCameraSuffix(info: CameraInfo): string | null {
 	const isIphone = info.model !== null && info.model.toLowerCase().includes('iphone');
 	if (isIphone) {
-		const orientation = info.lensModel === null ? null : iphoneLensOrientation(info.lensModel);
-		if (orientation !== null && info.focalLengthIn35mmFormat !== null) {
-			return `${info.model!} ${orientation} ${info.focalLengthIn35mmFormat}mm`;
+		const label = iphoneLensLabel(info.lensModel, info.focalLength, info.focalLengthIn35mmFormat);
+		if (label === null) {
+			return info.model;
 		}
-		return info.model;
+		return `${info.model!} ${label}`;
 	}
 
 	const base = formatCameraSuffix({
@@ -490,6 +567,7 @@ export function formatImessageCameraSuffix(info: CameraInfo): string | null {
 		model: info.model,
 		lensModel: null,
 		focalLengthIn35mmFormat: null,
+		focalLength: null,
 	});
 	if (base === null) {
 		return null;
