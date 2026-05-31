@@ -72,6 +72,7 @@ export interface OutputPathContext {
 	metadataDate: DateParts;
 	sourceFolderName: string | null;
 	place: string | null;
+	includeDayFolder?: boolean;
 }
 
 /**
@@ -80,17 +81,27 @@ export interface OutputPathContext {
  *
  *   <outputRoot>/<YYYY0> Decade/<YYYY>/<YYYY-MM>/<YYYY-MM-DD [suffix]>
  *
+ * When `includeDayFolder` is false, the day-folder segment (and its suffix) is
+ * omitted, stopping at `<outputRoot>/<YYYY0> Decade/<YYYY>/<YYYY-MM>`. This is
+ * used for iMessage entries whose filenames already encode the full date+time,
+ * chat title, and sender — a per-day folder there is redundant and produces
+ * one folder per day of texting.
+ *
  * Throws when the metadata date lacks a `day` (month-precision sources cannot
- * land in a per-day folder).
+ * land in a per-day folder) and `includeDayFolder` is true.
  */
 export function computeOutputDirectory(ctx: OutputPathContext): string {
+	const includeDayFolder = ctx.includeDayFolder ?? true;
 	const {year, month, day} = ctx.metadataDate;
-	if (day === null) {
-		throw new Error('computeOutputDirectory requires a day-precision metadata date');
-	}
 	const decade = `${Math.floor(year / 10) * 10} Decade`;
 	const yearStr = pad(year, 4);
 	const yearMonth = `${yearStr}-${pad(month)}`;
+	if (!includeDayFolder) {
+		return join(ctx.outputRoot, decade, yearStr, yearMonth);
+	}
+	if (day === null) {
+		throw new Error('computeOutputDirectory requires a day-precision metadata date');
+	}
 	const dayStr = `${yearMonth}-${pad(day)}`;
 	const suffix = pickDaySuffix(ctx.sourceFolderName, ctx.place);
 	const dayFolder = suffix === null ? dayStr : `${dayStr} ${suffix}`;

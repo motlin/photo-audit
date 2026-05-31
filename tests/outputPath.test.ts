@@ -89,4 +89,16 @@ describe('computeOutputDirectory', () => {
 			}),
 		).toBe('/library/2010 Decade/2015/2015-07/2015-07-16');
 	});
+
+	it('omits the day folder and suffix when includeDayFolder is false', () => {
+		expect(
+			computeOutputDirectory({
+				outputRoot: '/out',
+				metadataDate: date(2026, 5, 11),
+				sourceFolderName: 'Motlins',
+				place: null,
+				includeDayFolder: false,
+			}),
+		).toBe('/out/2020 Decade/2026/2026-05');
+	});
 });

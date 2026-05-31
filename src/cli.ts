@@ -204,6 +204,7 @@ function planLinksFromFindings(entries: readonly FixableEntry[], root: string, o
 						metadataDate: finding.metadataDate,
 						sourceFolderName,
 						place: location,
+						includeDayFolder: imessage === undefined,
 					});
 		plan.push({from: finding.path, to: join(targetDir, proposed), kind: finding.kind});
 	}

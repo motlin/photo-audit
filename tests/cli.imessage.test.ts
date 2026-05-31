@@ -199,10 +199,12 @@ describe('cli --imessage', () => {
 		const entry = JSON.parse(lines[0] ?? '') as {from: string; to: string; kind: string};
 		expect(entry.from).toBe(attachmentPath);
 		expect(entry.kind).toBe('MISSING_DATE');
-		// `2024-06-15 14:30:45 UTC` -> 10:30:45 in America/New_York. Day folder
-		// suffix is the chat display name; output hierarchy is
-		// <output>/2020 Decade/2024/2024-06/2024-06-15 Family Trip/<file>.
-		expect(entry.to).toContain(join(outputRoot, '2020 Decade', '2024', '2024-06', '2024-06-15 Family Trip'));
+		// `2024-06-15 14:30:45 UTC` -> 10:30:45 in America/New_York. iMessage
+		// entries skip the day folder entirely (filenames already encode the
+		// full date+time, chat title, and sender), so the hierarchy is
+		// <output>/2020 Decade/2024/2024-06/<file>.
+		expect(entry.to).toContain(join(outputRoot, '2020 Decade', '2024', '2024-06') + '/');
+		expect(entry.to).not.toContain('2024-06-15 Family Trip');
 		expect(entry.to.endsWith('.jpg')).toBe(true);
 	});
 
