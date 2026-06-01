@@ -10,7 +10,7 @@ import type {Finding} from './classify.ts';
 import {formatDate} from './dateParts.ts';
 import {type ProposedRename} from './fix.ts';
 import {iterAttachments, openChatDb} from './imessage/chatDb.ts';
-import {type ContactsMap, loadContacts, resolveContact} from './imessage/contacts.ts';
+import {type ContactsMap, getSelfName, loadContacts, resolveContact} from './imessage/contacts.ts';
 import {proposeImessageFilename} from './imessage/proposeImessageFilename.ts';
 import {contextFor, type MediaItem} from './mediaSource.ts';
 import {formatCameraSuffix, formatImessageCameraSuffix, type CameraInfo} from './metadata.ts';
@@ -162,7 +162,39 @@ interface FixableEntry {
 	cameraInfo: CameraInfo;
 	location: string | null;
 	sourceFolderName: string | null;
-	imessage?: {senderName: string | null; chatTitle: string | null};
+	imessage?: {senderName: string | null; recipient: string | null};
+}
+
+/**
+ * Resolve the (senderName, recipient) pair for a single iMessage attachment,
+ * given its iMessage context and the loaded contacts map. The sender is the
+ * current user (via the `self` contacts entry) for outgoing messages and the
+ * resolved handle otherwise. The recipient prefers a group title, then the
+ * resolved DM-partner handle (for outgoing DMs), then the current user (for
+ * incoming DMs).
+ */
+function resolveImessageEntry(
+	imessage: {
+		isFromMe: boolean;
+		handleId: string | null;
+		chatDisplayName: string | null;
+		dmPartnerHandle: string | null;
+	},
+	contacts: ContactsMap,
+): {senderName: string | null; recipient: string | null} {
+	const selfName = getSelfName(contacts);
+	const senderName = imessage.isFromMe ? selfName : resolveContact(imessage.handleId, contacts);
+	const groupTitle =
+		imessage.chatDisplayName !== null && imessage.chatDisplayName !== '' ? imessage.chatDisplayName : null;
+	let recipient: string | null;
+	if (groupTitle !== null) {
+		recipient = groupTitle;
+	} else if (imessage.isFromMe) {
+		recipient = imessage.dmPartnerHandle === null ? null : resolveContact(imessage.dmPartnerHandle, contacts);
+	} else {
+		recipient = selfName;
+	}
+	return {senderName, recipient};
 }
 
 interface PlanOptions {
@@ -193,7 +225,7 @@ function planLinksFromFindings(entries: readonly FixableEntry[], root: string, o
 						originalName: basename(finding.path),
 						date: finding.metadataDate,
 						senderName: imessage.senderName,
-						chatTitle: imessage.chatTitle,
+						recipient: imessage.recipient,
 						cameraSuffix: formatImessageCameraSuffix(cameraInfo),
 					});
 		const targetDir =
@@ -396,16 +428,7 @@ async function main(): Promise<void> {
 			counts[finding.kind] += 1;
 			scanned += 1;
 
-			const imessageEntry =
-				imessage === null
-					? undefined
-					: {
-							senderName: imessage.isFromMe ? null : resolveContact(imessage.handleId, contacts),
-							chatTitle:
-								imessage.chatDisplayName === null || imessage.chatDisplayName === ''
-									? null
-									: imessage.chatDisplayName,
-						};
+			const imessageEntry = imessage === null ? undefined : resolveImessageEntry(imessage, contacts);
 
 			if (finding.kind === 'WRONG_DATE') {
 				printWrongDate(finding, root, location, cameraInfo, values['strip-camera-id']);

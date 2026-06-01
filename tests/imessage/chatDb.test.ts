@@ -80,7 +80,18 @@ function createSchema(db: BetterSqlite3.Database): void {
 			chat_id INTEGER,
 			message_id INTEGER
 		);
+		CREATE TABLE chat_handle_join (
+			chat_id INTEGER,
+			handle_id INTEGER
+		);
 	`);
+}
+
+function seedChatHandleJoin(db: BetterSqlite3.Database, links: Array<{chatRowId: number; handleRowId: number}>): void {
+	const stmt = db.prepare('INSERT INTO chat_handle_join (chat_id, handle_id) VALUES (?, ?)');
+	for (const link of links) {
+		stmt.run(link.chatRowId, link.handleRowId);
+	}
 }
 
 function seedChats(db: BetterSqlite3.Database, chats: ChatSeed[]): void {
@@ -159,6 +170,13 @@ describe('openChatDb / iterAttachments', () => {
 		seedHandles(db, [
 			{handleRowId: 20, id: '+15550001111'},
 			{handleRowId: 21, id: '+15551234567'},
+			{handleRowId: 22, id: '+15552223333'},
+		]);
+		// chat 10 is a group with two participants; chat 11 is a DM with one.
+		seedChatHandleJoin(db, [
+			{chatRowId: 10, handleRowId: 20},
+			{chatRowId: 10, handleRowId: 22},
+			{chatRowId: 11, handleRowId: 21},
 		]);
 		seedAttachments(db, [
 			{
@@ -212,6 +230,7 @@ describe('openChatDb / iterAttachments', () => {
 					chatIdentifier: 'chat101',
 					chatDisplayName: 'Family Trip',
 					handleId: '+15550001111',
+					dmPartnerHandle: null,
 				},
 				{
 					absPath: movPath,
@@ -223,6 +242,7 @@ describe('openChatDb / iterAttachments', () => {
 					chatIdentifier: '+15551234567',
 					chatDisplayName: null,
 					handleId: '+15551234567',
+					dmPartnerHandle: '+15551234567',
 				},
 			]);
 		} finally {
@@ -504,6 +524,79 @@ describe('openChatDb / iterAttachments', () => {
 			const rows = [...iterAttachments(reopened)];
 			expect(rows).toHaveLength(1);
 			expect(rows[0]?.messageDate).toEqual(new Date(1_700_000_100_000));
+		} finally {
+			reopened.close();
+		}
+	});
+
+	it('resolves dmPartnerHandle to the lone handle for DMs and null for multi-handle groups', async () => {
+		const cocoaSeconds = unixSecondsToCocoaSeconds(1_700_000_000n);
+		const msgNanos = unixSecondsToCocoaNanos(1_700_000_100n);
+
+		const dmPath = join(dir, 'dm.jpg');
+		const groupPath = join(dir, 'group.jpg');
+		await touch(dmPath);
+		await touch(groupPath);
+
+		seedChats(db, [
+			{chatRowId: 10, chatIdentifier: '+15551234567', displayName: null},
+			{chatRowId: 11, chatIdentifier: 'chat202', displayName: 'Motlins'},
+		]);
+		seedHandles(db, [
+			{handleRowId: 20, id: '+15551234567'},
+			{handleRowId: 21, id: '+15550001111'},
+			{handleRowId: 22, id: '+15552223333'},
+		]);
+		seedChatHandleJoin(db, [
+			{chatRowId: 10, handleRowId: 20},
+			{chatRowId: 11, handleRowId: 21},
+			{chatRowId: 11, handleRowId: 22},
+		]);
+		seedAttachments(db, [
+			{
+				attachmentRowId: 1,
+				filename: dmPath,
+				transferName: 'dm.jpg',
+				mimeType: 'image/jpeg',
+				createdDateCocoaSeconds: cocoaSeconds,
+				isSticker: 0,
+				messages: [
+					{
+						messageRowId: 100,
+						dateCocoaNanos: msgNanos,
+						isFromMe: 1,
+						handleRowId: 20,
+						chatRowId: 10,
+					},
+				],
+			},
+			{
+				attachmentRowId: 2,
+				filename: groupPath,
+				transferName: 'group.jpg',
+				mimeType: 'image/jpeg',
+				createdDateCocoaSeconds: cocoaSeconds,
+				isSticker: 0,
+				messages: [
+					{
+						messageRowId: 101,
+						dateCocoaNanos: msgNanos,
+						isFromMe: 0,
+						handleRowId: 21,
+						chatRowId: 11,
+					},
+				],
+			},
+		]);
+		db.close();
+
+		const reopened = openChatDb(dbPath);
+		try {
+			const rows = [...iterAttachments(reopened)];
+			const dm = rows.find((r) => r.transferName === 'dm.jpg');
+			const group = rows.find((r) => r.transferName === 'group.jpg');
+			expect(dm?.dmPartnerHandle).toBe('+15551234567');
+			expect(group?.dmPartnerHandle).toBeNull();
 		} finally {
 			reopened.close();
 		}

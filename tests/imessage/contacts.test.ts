@@ -2,7 +2,7 @@ import {mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {afterEach, beforeEach, describe, expect, it} from 'vitest';
-import {loadContacts, normalizeHandle, resolveContact} from '../../src/imessage/contacts.ts';
+import {getSelfName, loadContacts, normalizeHandle, resolveContact} from '../../src/imessage/contacts.ts';
 
 describe('loadContacts', () => {
 	let dir: string;
@@ -107,5 +107,21 @@ describe('resolveContact', () => {
 
 	it('resolves an email case-insensitively', () => {
 		expect(resolveContact('Craig@Example.COM', contacts)).toBe('Craig');
+	});
+});
+
+describe('getSelfName', () => {
+	it('returns the value mapped to the self key', () => {
+		const contacts = new Map<string, string>([['self', 'Craig']]);
+		expect(getSelfName(contacts)).toBe('Craig');
+	});
+
+	it('returns null when no self entry exists', () => {
+		const contacts = new Map<string, string>([['+18452168005', 'Vika']]);
+		expect(getSelfName(contacts)).toBeNull();
+	});
+
+	it('returns null for an empty contacts map', () => {
+		expect(getSelfName(new Map())).toBeNull();
 	});
 });

@@ -51,7 +51,7 @@ export interface ProposeImessageFilenameInput {
 	originalName: string;
 	date: DateParts;
 	senderName: string | null;
-	chatTitle: string | null;
+	recipient: string | null;
 	cameraSuffix: string | null;
 }
 
@@ -85,7 +85,12 @@ function transformStem(stem: string): string {
  *
  * Output shape (slots with null/empty content are omitted):
  *
- *     <YYYY-MM-DD HH.MM.SS[.mmm]> (<senderName>) (<chatTitle>) (<cameraSuffix>) <preserved-stem?><ext>
+ *     <YYYY-MM-DD HH.MM.SS[.mmm]> (<senderName> → <recipient>) (<cameraSuffix>) <preserved-stem?><ext>
+ *
+ * The sender/recipient bracket combines both sides of the conversation. When
+ * both are known the arrow `→` (U+2192) joins them; when only one is known
+ * the bracket holds just that name; when neither is known the bracket is
+ * omitted entirely.
  *
  * iMessage attachments arrive with opaque names (UUIDs, camera-firmware ids,
  * `FullSizeRender.heic`, slash-stripped URLs, etc.). This function rewrites
@@ -93,7 +98,7 @@ function transformStem(stem: string): string {
  * macOS screenshots intact (just shortened).
  */
 export function proposeImessageFilename(input: ProposeImessageFilenameInput): string {
-	const {originalName, date, senderName, chatTitle, cameraSuffix} = input;
+	const {originalName, date, senderName, recipient, cameraSuffix} = input;
 
 	const dot = originalName.lastIndexOf('.');
 	const rawStem = dot > 0 ? originalName.slice(0, dot) : originalName;
@@ -102,12 +107,16 @@ export function proposeImessageFilename(input: ProposeImessageFilenameInput): st
 	const withoutLeadingDate = rawStem.replace(LEADING_DATE, '').trim();
 	const transformedStem = transformStem(withoutLeadingDate);
 
+	const hasSender = senderName !== null && senderName !== '';
+	const hasRecipient = recipient !== null && recipient !== '';
+
 	const parts: string[] = [formatDate(date)];
-	if (senderName !== null && senderName !== '') {
+	if (hasSender && hasRecipient) {
+		parts.push(`(${senderName} → ${recipient})`);
+	} else if (hasSender) {
 		parts.push(`(${senderName})`);
-	}
-	if (chatTitle !== null && chatTitle !== '') {
-		parts.push(`(${chatTitle})`);
+	} else if (hasRecipient) {
+		parts.push(`(${recipient})`);
 	}
 	if (cameraSuffix !== null && cameraSuffix !== '') {
 		parts.push(`(${cameraSuffix})`);

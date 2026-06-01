@@ -68,3 +68,13 @@ export function resolveContact(handle: string | null, contacts: ContactsMap): st
 	}
 	return handle;
 }
+
+/**
+ * Look up the current user's display name in the contacts map using the
+ * special `self` key. Returns null when the key is absent. This is the name
+ * used as the "from" side of outgoing iMessage attachments and the "to" side
+ * of incoming DMs.
+ */
+export function getSelfName(contacts: ContactsMap): string | null {
+	return contacts.get('self') ?? null;
+}

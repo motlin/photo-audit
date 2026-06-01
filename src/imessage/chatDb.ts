@@ -43,6 +43,7 @@ export interface AttachmentRow {
 	chatIdentifier: string | null;
 	chatDisplayName: string | null;
 	handleId: string | null;
+	dmPartnerHandle: string | null;
 }
 
 interface RawRow {
@@ -55,6 +56,7 @@ interface RawRow {
 	chat_identifier: string | null;
 	chat_display_name: string | null;
 	handle_id: string | null;
+	dm_partner_handle: string | null;
 }
 
 const ATTACHMENT_QUERY = `
@@ -67,7 +69,22 @@ const ATTACHMENT_QUERY = `
 		MAX(m.is_from_me) AS is_from_me,
 		c.chat_identifier AS chat_identifier,
 		c.display_name AS chat_display_name,
-		h.id AS handle_id
+		h.id AS handle_id,
+		CASE
+			WHEN (
+				SELECT COUNT(DISTINCT chj2.handle_id)
+				FROM chat_handle_join chj2
+				WHERE chj2.chat_id = c.ROWID
+			) = 1
+			THEN (
+				SELECT h2.id
+				FROM chat_handle_join chj3
+				JOIN handle h2 ON h2.ROWID = chj3.handle_id
+				WHERE chj3.chat_id = c.ROWID
+				LIMIT 1
+			)
+			ELSE NULL
+		END AS dm_partner_handle
 	FROM attachment a
 	JOIN message_attachment_join maj ON maj.attachment_id = a.ROWID
 	JOIN message m ON m.ROWID = maj.message_id
@@ -164,6 +181,7 @@ export function* iterAttachments(db: Database): Generator<AttachmentRow> {
 			chatIdentifier: row.chat_identifier,
 			chatDisplayName: row.chat_display_name,
 			handleId: row.handle_id,
+			dmPartnerHandle: row.dm_partner_handle,
 		};
 	}
 }
