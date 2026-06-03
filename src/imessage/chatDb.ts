@@ -43,7 +43,7 @@ export interface AttachmentRow {
 	chatIdentifier: string | null;
 	chatDisplayName: string | null;
 	handleId: string | null;
-	dmPartnerHandle: string | null;
+	chatHandles: string[];
 }
 
 interface RawRow {
@@ -56,7 +56,7 @@ interface RawRow {
 	chat_identifier: string | null;
 	chat_display_name: string | null;
 	handle_id: string | null;
-	dm_partner_handle: string | null;
+	chat_handles: string | null;
 }
 
 const ATTACHMENT_QUERY = `
@@ -70,21 +70,15 @@ const ATTACHMENT_QUERY = `
 		c.chat_identifier AS chat_identifier,
 		c.display_name AS chat_display_name,
 		h.id AS handle_id,
-		CASE
-			WHEN (
-				SELECT COUNT(DISTINCT chj2.handle_id)
+		(
+			SELECT GROUP_CONCAT(h2.id, ',')
+			FROM (
+				SELECT DISTINCT chj2.handle_id
 				FROM chat_handle_join chj2
 				WHERE chj2.chat_id = c.ROWID
-			) = 1
-			THEN (
-				SELECT h2.id
-				FROM chat_handle_join chj3
-				JOIN handle h2 ON h2.ROWID = chj3.handle_id
-				WHERE chj3.chat_id = c.ROWID
-				LIMIT 1
-			)
-			ELSE NULL
-		END AS dm_partner_handle
+			) chj2
+			JOIN handle h2 ON h2.ROWID = chj2.handle_id
+		) AS chat_handles
 	FROM attachment a
 	JOIN message_attachment_join maj ON maj.attachment_id = a.ROWID
 	JOIN message m ON m.ROWID = maj.message_id
@@ -171,6 +165,7 @@ export function* iterAttachments(db: Database): Generator<AttachmentRow> {
 		if (!existsSync(absPath)) {
 			continue;
 		}
+		const chatHandles = row.chat_handles === null || row.chat_handles === '' ? [] : row.chat_handles.split(',');
 		yield {
 			absPath,
 			transferName: row.transfer_name,
@@ -181,7 +176,7 @@ export function* iterAttachments(db: Database): Generator<AttachmentRow> {
 			chatIdentifier: row.chat_identifier,
 			chatDisplayName: row.chat_display_name,
 			handleId: row.handle_id,
-			dmPartnerHandle: row.dm_partner_handle,
+			chatHandles,
 		};
 	}
 }

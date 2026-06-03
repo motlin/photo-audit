@@ -2,7 +2,13 @@ import {mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {afterEach, beforeEach, describe, expect, it} from 'vitest';
-import {getSelfName, loadContacts, normalizeHandle, resolveContact} from '../../src/imessage/contacts.ts';
+import {
+	getChatOverride,
+	getSelfName,
+	loadContacts,
+	normalizeHandle,
+	resolveContact,
+} from '../../src/imessage/contacts.ts';
 
 describe('loadContacts', () => {
 	let dir: string;
@@ -15,20 +21,46 @@ describe('loadContacts', () => {
 		rmSync(dir, {recursive: true, force: true});
 	});
 
-	it('returns an empty Map when the file does not exist', () => {
+	it('returns empty maps when the file does not exist', () => {
 		const missing = join(dir, 'missing.json');
 		const result = loadContacts(missing);
-		expect(result).toBeInstanceOf(Map);
-		expect(result.size).toBe(0);
+		expect(result.handles).toBeInstanceOf(Map);
+		expect(result.handles.size).toBe(0);
+		expect(result.chats).toBeInstanceOf(Map);
+		expect(result.chats.size).toBe(0);
+		expect(result.self).toBeNull();
 	});
 
-	it('returns a Map populated from valid JSON', () => {
+	it('returns handles populated from valid JSON', () => {
 		const path = join(dir, 'contacts.json');
 		writeFileSync(path, JSON.stringify({'+18452168005': 'Vika', 'craig@example.com': 'Craig'}));
 		const result = loadContacts(path);
-		expect(result.get('+18452168005')).toBe('Vika');
-		expect(result.get('craig@example.com')).toBe('Craig');
-		expect(result.size).toBe(2);
+		expect(result.handles.get('+18452168005')).toBe('Vika');
+		expect(result.handles.get('craig@example.com')).toBe('Craig');
+		expect(result.handles.size).toBe(2);
+		expect(result.chats.size).toBe(0);
+		expect(result.self).toBeNull();
+	});
+
+	it('parses the chats object into a separate map without polluting the handles map', () => {
+		const path = join(dir, 'contacts.json');
+		writeFileSync(
+			path,
+			JSON.stringify({
+				self: 'Craig',
+				'+18452168005': 'Vika',
+				chats: {chat123: 'Family Group', chat456: 'Book Club'},
+			}),
+		);
+		const result = loadContacts(path);
+		expect(result.self).toBe('Craig');
+		expect(result.handles.get('+18452168005')).toBe('Vika');
+		expect(result.handles.get('self')).toBe('Craig');
+		expect(result.handles.has('chat123')).toBe(false);
+		expect(result.handles.has('chats')).toBe(false);
+		expect(result.chats.get('chat123')).toBe('Family Group');
+		expect(result.chats.get('chat456')).toBe('Book Club');
+		expect(result.chats.size).toBe(2);
 	});
 
 	it('throws an error naming the file when JSON is malformed', () => {
@@ -47,9 +79,39 @@ describe('loadContacts', () => {
 			}),
 		);
 		const result = loadContacts(path);
-		expect(result.get('+18452168005')).toBe('Vika');
-		expect(result.has('chats')).toBe(false);
-		expect(result.size).toBe(1);
+		expect(result.handles.get('+18452168005')).toBe('Vika');
+		expect(result.handles.has('chats')).toBe(false);
+		expect(result.handles.size).toBe(1);
+		expect(result.chats.get('chat100734652767048314')).toBe('Motlins');
+	});
+
+	it('throws when chats is not an object', () => {
+		const path = join(dir, 'badchats.json');
+		writeFileSync(path, JSON.stringify({chats: 'oops'}));
+		expect(() => loadContacts(path)).toThrow(/chats/);
+	});
+});
+
+describe('getChatOverride', () => {
+	const chats = new Map<string, string>([
+		['chat123', 'Family Group'],
+		['+15551234567', 'DM Alias'],
+	]);
+
+	it('returns null for a null chat id', () => {
+		expect(getChatOverride(null, chats)).toBeNull();
+	});
+
+	it('returns null when the chat id is not present', () => {
+		expect(getChatOverride('chatXYZ', chats)).toBeNull();
+	});
+
+	it('returns the override when the chat id is present', () => {
+		expect(getChatOverride('chat123', chats)).toBe('Family Group');
+	});
+
+	it('returns null when the chats map is empty', () => {
+		expect(getChatOverride('chat123', new Map())).toBeNull();
 	});
 });
 

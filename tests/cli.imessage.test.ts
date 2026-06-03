@@ -424,4 +424,186 @@ describe('cli --imessage', () => {
 		const outgoingName = outgoing!.to.split('/').pop() ?? '';
 		expect(outgoingName).toBe('2024-06-15 10.11.45 (Craig → Alice) outgoing.jpg');
 	});
+
+	it('skips unnamed groups with >3 handles and reports them; uses contacts.chats overrides when present', async () => {
+		const dmPath = join(dir, 'dm.jpg');
+		const smallGroupPath = join(dir, 'smallgroup.jpg');
+		const overrideGroupPath = join(dir, 'override.jpg');
+		const largeGroupPath = join(dir, 'large.jpg');
+		await writeFile(dmPath, minimalJpegBuffer());
+		await writeFile(smallGroupPath, minimalJpegBuffer());
+		await writeFile(overrideGroupPath, minimalJpegBuffer());
+		await writeFile(largeGroupPath, minimalJpegBuffer());
+
+		const dbPath = join(dir, 'chat.db');
+		const db = new BetterSqlite3(dbPath);
+		try {
+			createChatDbSchema(db);
+			// Chat 10: 1-handle DM with Alice (no display_name).
+			// Chat 11: unnamed 3-handle group (auto-derive recipient).
+			// Chat 12: unnamed 4-handle group BUT with a chats override.
+			// Chat 13: unnamed 4-handle group with NO override -> must be skipped + reported.
+			db.prepare('INSERT INTO chat (ROWID, chat_identifier, display_name) VALUES (?, ?, ?)').run(
+				10,
+				'+15550001111',
+				null,
+			);
+			db.prepare('INSERT INTO chat (ROWID, chat_identifier, display_name) VALUES (?, ?, ?)').run(
+				11,
+				'chat-three',
+				null,
+			);
+			db.prepare('INSERT INTO chat (ROWID, chat_identifier, display_name) VALUES (?, ?, ?)').run(
+				12,
+				'chat-override',
+				null,
+			);
+			db.prepare('INSERT INTO chat (ROWID, chat_identifier, display_name) VALUES (?, ?, ?)').run(
+				13,
+				'chat-big',
+				null,
+			);
+			db.prepare('INSERT INTO handle (ROWID, id) VALUES (?, ?)').run(20, '+15550001111'); // Alice
+			db.prepare('INSERT INTO handle (ROWID, id) VALUES (?, ?)').run(21, '+15552220001');
+			db.prepare('INSERT INTO handle (ROWID, id) VALUES (?, ?)').run(22, '+15552220002');
+			db.prepare('INSERT INTO handle (ROWID, id) VALUES (?, ?)').run(23, '+15552220003');
+			db.prepare('INSERT INTO handle (ROWID, id) VALUES (?, ?)').run(24, '+15552220004');
+			db.prepare('INSERT INTO handle (ROWID, id) VALUES (?, ?)').run(25, '+15552220005');
+
+			const baseUnix = 1_718_460_645n;
+			db.prepare(
+				'INSERT INTO attachment (ROWID, filename, transfer_name, mime_type, created_date, is_sticker) VALUES (?, ?, ?, ?, ?, ?)',
+			).run(1, dmPath, 'IMG.jpg', 'image/jpeg', unixSecondsToCocoaSeconds(baseUnix), 0);
+			db.prepare(
+				'INSERT INTO attachment (ROWID, filename, transfer_name, mime_type, created_date, is_sticker) VALUES (?, ?, ?, ?, ?, ?)',
+			).run(2, smallGroupPath, 'IMG.jpg', 'image/jpeg', unixSecondsToCocoaSeconds(baseUnix + 60n), 0);
+			db.prepare(
+				'INSERT INTO attachment (ROWID, filename, transfer_name, mime_type, created_date, is_sticker) VALUES (?, ?, ?, ?, ?, ?)',
+			).run(3, overrideGroupPath, 'IMG.jpg', 'image/jpeg', unixSecondsToCocoaSeconds(baseUnix + 120n), 0);
+			db.prepare(
+				'INSERT INTO attachment (ROWID, filename, transfer_name, mime_type, created_date, is_sticker) VALUES (?, ?, ?, ?, ?, ?)',
+			).run(4, largeGroupPath, 'IMG.jpg', 'image/jpeg', unixSecondsToCocoaSeconds(baseUnix + 180n), 0);
+
+			// DM incoming from Alice.
+			db.prepare('INSERT INTO message (ROWID, date, is_from_me, handle_id) VALUES (?, ?, ?, ?)').run(
+				100,
+				unixSecondsToCocoaNanos(baseUnix),
+				0,
+				20,
+			);
+			// Small group incoming from handle 21.
+			db.prepare('INSERT INTO message (ROWID, date, is_from_me, handle_id) VALUES (?, ?, ?, ?)').run(
+				101,
+				unixSecondsToCocoaNanos(baseUnix + 60n),
+				0,
+				21,
+			);
+			// Override group outgoing.
+			db.prepare('INSERT INTO message (ROWID, date, is_from_me, handle_id) VALUES (?, ?, ?, ?)').run(
+				102,
+				unixSecondsToCocoaNanos(baseUnix + 120n),
+				1,
+				null,
+			);
+			// Large unnamed group incoming.
+			db.prepare('INSERT INTO message (ROWID, date, is_from_me, handle_id) VALUES (?, ?, ?, ?)').run(
+				103,
+				unixSecondsToCocoaNanos(baseUnix + 180n),
+				0,
+				22,
+			);
+
+			db.prepare('INSERT INTO message_attachment_join (message_id, attachment_id) VALUES (?, ?)').run(100, 1);
+			db.prepare('INSERT INTO message_attachment_join (message_id, attachment_id) VALUES (?, ?)').run(101, 2);
+			db.prepare('INSERT INTO message_attachment_join (message_id, attachment_id) VALUES (?, ?)').run(102, 3);
+			db.prepare('INSERT INTO message_attachment_join (message_id, attachment_id) VALUES (?, ?)').run(103, 4);
+			db.prepare('INSERT INTO chat_message_join (chat_id, message_id) VALUES (?, ?)').run(10, 100);
+			db.prepare('INSERT INTO chat_message_join (chat_id, message_id) VALUES (?, ?)').run(11, 101);
+			db.prepare('INSERT INTO chat_message_join (chat_id, message_id) VALUES (?, ?)').run(12, 102);
+			db.prepare('INSERT INTO chat_message_join (chat_id, message_id) VALUES (?, ?)').run(13, 103);
+
+			// Chat 10: 1 handle.
+			db.prepare('INSERT INTO chat_handle_join (chat_id, handle_id) VALUES (?, ?)').run(10, 20);
+			// Chat 11: 3 handles (one of them is the sender).
+			db.prepare('INSERT INTO chat_handle_join (chat_id, handle_id) VALUES (?, ?)').run(11, 20);
+			db.prepare('INSERT INTO chat_handle_join (chat_id, handle_id) VALUES (?, ?)').run(11, 21);
+			db.prepare('INSERT INTO chat_handle_join (chat_id, handle_id) VALUES (?, ?)').run(11, 22);
+			// Chat 12: 4 handles, but has override.
+			db.prepare('INSERT INTO chat_handle_join (chat_id, handle_id) VALUES (?, ?)').run(12, 20);
+			db.prepare('INSERT INTO chat_handle_join (chat_id, handle_id) VALUES (?, ?)').run(12, 21);
+			db.prepare('INSERT INTO chat_handle_join (chat_id, handle_id) VALUES (?, ?)').run(12, 22);
+			db.prepare('INSERT INTO chat_handle_join (chat_id, handle_id) VALUES (?, ?)').run(12, 23);
+			// Chat 13: 4 handles, no override -> must be skipped.
+			db.prepare('INSERT INTO chat_handle_join (chat_id, handle_id) VALUES (?, ?)').run(13, 21);
+			db.prepare('INSERT INTO chat_handle_join (chat_id, handle_id) VALUES (?, ?)').run(13, 22);
+			db.prepare('INSERT INTO chat_handle_join (chat_id, handle_id) VALUES (?, ?)').run(13, 23);
+			db.prepare('INSERT INTO chat_handle_join (chat_id, handle_id) VALUES (?, ?)').run(13, 24);
+		} finally {
+			db.close();
+		}
+
+		const contactsPath = join(dir, 'contacts.json');
+		await writeFile(
+			contactsPath,
+			JSON.stringify({
+				self: 'Craig',
+				'+15550001111': 'Alice',
+				'+15552220001': 'Bob',
+				'+15552220002': 'Carol',
+				chats: {'chat-override': 'Override Group'},
+			}),
+			'utf8',
+		);
+
+		const planPath = join(dir, 'plan.jsonl');
+		const outputRoot = join(dir, 'output');
+
+		const result = await runCli([
+			'--imessage',
+			'--db',
+			dbPath,
+			'--contacts',
+			contactsPath,
+			'--plan',
+			planPath,
+			'--output',
+			outputRoot,
+			'--zone',
+			'America/New_York',
+		]);
+
+		expect(result.code).toBe(0);
+
+		const planText = await readFile(planPath, 'utf8');
+		const lines = planText.split('\n').filter((line) => line.trim() !== '');
+		// Three entries: DM, small group, override group. The big unnamed group is skipped.
+		expect(lines).toHaveLength(3);
+		const entries = lines.map((line) => JSON.parse(line) as {from: string; to: string; kind: string});
+		const byFrom = new Map(entries.map((entry) => [entry.from, entry]));
+
+		// DM uses Alice -> Craig.
+		const dmEntry = byFrom.get(dmPath);
+		expect(dmEntry).toBeDefined();
+		expect(dmEntry!.to.split('/').pop()).toBe('2024-06-15 10.10.45 (Alice → Craig) dm.jpg');
+
+		// Small group: 3 handles, sender is Bob (handle 21). Recipient should
+		// join the remaining participants and self (Craig). Sender Bob is
+		// excluded.
+		const smallEntry = byFrom.get(smallGroupPath);
+		expect(smallEntry).toBeDefined();
+		const smallName = smallEntry!.to.split('/').pop() ?? '';
+		expect(smallName).toBe('2024-06-15 10.11.45 (Bob → Alice, Carol, Craig) smallgroup.jpg');
+
+		// Override group: 4 handles but chats override applies.
+		const overrideEntry = byFrom.get(overrideGroupPath);
+		expect(overrideEntry).toBeDefined();
+		expect(overrideEntry!.to.split('/').pop()).toBe('2024-06-15 10.12.45 (Craig → Override Group) override.jpg');
+
+		// Big unnamed group: not in plan, but stderr should mention it.
+		expect(byFrom.has(largeGroupPath)).toBe(false);
+		expect(result.stderr).toContain('1 unnamed group chats');
+		expect(result.stderr).toContain('chat-big');
+		expect(result.stderr).toContain('handles=4');
+		expect(result.stderr).toContain('attachments=1');
+	});
 });

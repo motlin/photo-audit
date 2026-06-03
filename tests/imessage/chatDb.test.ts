@@ -230,7 +230,7 @@ describe('openChatDb / iterAttachments', () => {
 					chatIdentifier: 'chat101',
 					chatDisplayName: 'Family Trip',
 					handleId: '+15550001111',
-					dmPartnerHandle: null,
+					chatHandles: ['+15550001111', '+15552223333'],
 				},
 				{
 					absPath: movPath,
@@ -242,7 +242,7 @@ describe('openChatDb / iterAttachments', () => {
 					chatIdentifier: '+15551234567',
 					chatDisplayName: null,
 					handleId: '+15551234567',
-					dmPartnerHandle: '+15551234567',
+					chatHandles: ['+15551234567'],
 				},
 			]);
 		} finally {
@@ -529,28 +529,42 @@ describe('openChatDb / iterAttachments', () => {
 		}
 	});
 
-	it('resolves dmPartnerHandle to the lone handle for DMs and null for multi-handle groups', async () => {
+	it('populates chatHandles with all distinct participants for DMs, small groups, and large groups', async () => {
 		const cocoaSeconds = unixSecondsToCocoaSeconds(1_700_000_000n);
 		const msgNanos = unixSecondsToCocoaNanos(1_700_000_100n);
 
 		const dmPath = join(dir, 'dm.jpg');
-		const groupPath = join(dir, 'group.jpg');
+		const smallGroupPath = join(dir, 'small.jpg');
+		const largeGroupPath = join(dir, 'large.jpg');
 		await touch(dmPath);
-		await touch(groupPath);
+		await touch(smallGroupPath);
+		await touch(largeGroupPath);
 
 		seedChats(db, [
 			{chatRowId: 10, chatIdentifier: '+15551234567', displayName: null},
-			{chatRowId: 11, chatIdentifier: 'chat202', displayName: 'Motlins'},
+			{chatRowId: 11, chatIdentifier: 'chat202', displayName: null},
+			{chatRowId: 12, chatIdentifier: 'chat303', displayName: null},
 		]);
 		seedHandles(db, [
 			{handleRowId: 20, id: '+15551234567'},
 			{handleRowId: 21, id: '+15550001111'},
 			{handleRowId: 22, id: '+15552223333'},
+			{handleRowId: 23, id: '+15554445555'},
+			{handleRowId: 24, id: '+15556667777'},
+			{handleRowId: 25, id: '+15558889999'},
 		]);
 		seedChatHandleJoin(db, [
+			// 1-handle DM
 			{chatRowId: 10, handleRowId: 20},
+			// 2-handle unnamed group
 			{chatRowId: 11, handleRowId: 21},
 			{chatRowId: 11, handleRowId: 22},
+			// 4-handle unnamed group (must be skipped by CLI but iterAttachments
+			// still yields the row with chatHandles populated).
+			{chatRowId: 12, handleRowId: 22},
+			{chatRowId: 12, handleRowId: 23},
+			{chatRowId: 12, handleRowId: 24},
+			{chatRowId: 12, handleRowId: 25},
 		]);
 		seedAttachments(db, [
 			{
@@ -572,8 +586,8 @@ describe('openChatDb / iterAttachments', () => {
 			},
 			{
 				attachmentRowId: 2,
-				filename: groupPath,
-				transferName: 'group.jpg',
+				filename: smallGroupPath,
+				transferName: 'small.jpg',
 				mimeType: 'image/jpeg',
 				createdDateCocoaSeconds: cocoaSeconds,
 				isSticker: 0,
@@ -587,6 +601,23 @@ describe('openChatDb / iterAttachments', () => {
 					},
 				],
 			},
+			{
+				attachmentRowId: 3,
+				filename: largeGroupPath,
+				transferName: 'large.jpg',
+				mimeType: 'image/jpeg',
+				createdDateCocoaSeconds: cocoaSeconds,
+				isSticker: 0,
+				messages: [
+					{
+						messageRowId: 102,
+						dateCocoaNanos: msgNanos,
+						isFromMe: 0,
+						handleRowId: 22,
+						chatRowId: 12,
+					},
+				],
+			},
 		]);
 		db.close();
 
@@ -594,9 +625,16 @@ describe('openChatDb / iterAttachments', () => {
 		try {
 			const rows = [...iterAttachments(reopened)];
 			const dm = rows.find((r) => r.transferName === 'dm.jpg');
-			const group = rows.find((r) => r.transferName === 'group.jpg');
-			expect(dm?.dmPartnerHandle).toBe('+15551234567');
-			expect(group?.dmPartnerHandle).toBeNull();
+			const small = rows.find((r) => r.transferName === 'small.jpg');
+			const large = rows.find((r) => r.transferName === 'large.jpg');
+			expect(dm?.chatHandles).toEqual(['+15551234567']);
+			expect(small?.chatHandles?.slice().sort()).toEqual(['+15550001111', '+15552223333']);
+			expect(large?.chatHandles?.slice().sort()).toEqual([
+				'+15552223333',
+				'+15554445555',
+				'+15556667777',
+				'+15558889999',
+			]);
 		} finally {
 			reopened.close();
 		}

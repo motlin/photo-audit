@@ -55,7 +55,7 @@ describe('auditImessageFile', () => {
 			chatIdentifier: 'chat101',
 			chatDisplayName: 'Family Trip',
 			handleId: null,
-			dmPartnerHandle: null,
+			chatHandles: [],
 			...opts,
 		};
 	}

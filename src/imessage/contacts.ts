@@ -7,14 +7,21 @@
 import {readFileSync} from 'node:fs';
 
 export type ContactsMap = Map<string, string>;
+export type ChatOverridesMap = Map<string, string>;
 
-export function loadContacts(path: string): ContactsMap {
+export interface LoadedContacts {
+	handles: ContactsMap;
+	chats: ChatOverridesMap;
+	self: string | null;
+}
+
+export function loadContacts(path: string): LoadedContacts {
 	let raw: string;
 	try {
 		raw = readFileSync(path, 'utf8');
 	} catch (error) {
 		if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-			return new Map();
+			return {handles: new Map(), chats: new Map(), self: null};
 		}
 		throw error;
 	}
@@ -28,19 +35,34 @@ export function loadContacts(path: string): ContactsMap {
 	if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
 		throw new Error(`Contacts JSON at ${path} must be an object mapping handle -> display name`);
 	}
-	const map: ContactsMap = new Map();
+	const handles: ContactsMap = new Map();
+	const chats: ChatOverridesMap = new Map();
+	let self: string | null = null;
 	for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
 		// `chats` is a reserved key holding chat-id -> display-name overrides,
-		// not a handle mapping; skip it rather than rejecting the whole file.
+		// not a handle mapping; parse it into the overrides map rather than
+		// treating it as a handle entry.
 		if (key === 'chats') {
+			if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+				throw new Error(`Contacts JSON at ${path} has non-object value for 'chats'`);
+			}
+			for (const [chatKey, chatValue] of Object.entries(value as Record<string, unknown>)) {
+				if (typeof chatValue !== 'string') {
+					throw new Error(`Contacts JSON at ${path} has non-string value for chats[${chatKey}]`);
+				}
+				chats.set(chatKey, chatValue);
+			}
 			continue;
 		}
 		if (typeof value !== 'string') {
 			throw new Error(`Contacts JSON at ${path} has non-string value for handle ${key}`);
 		}
-		map.set(key, value);
+		if (key === 'self') {
+			self = value;
+		}
+		handles.set(key, value);
 	}
-	return map;
+	return {handles, chats, self};
 }
 
 export function normalizeHandle(handle: string): string {
@@ -77,4 +99,16 @@ export function resolveContact(handle: string | null, contacts: ContactsMap): st
  */
 export function getSelfName(contacts: ContactsMap): string | null {
 	return contacts.get('self') ?? null;
+}
+
+/**
+ * Look up an override for a specific chat by its `chat_identifier`. Returns
+ * null when the override map is empty or the chat is not present. Used to
+ * label unnamed group chats that have too many participants to auto-derive.
+ */
+export function getChatOverride(chatId: string | null, chats: ChatOverridesMap): string | null {
+	if (chatId === null) {
+		return null;
+	}
+	return chats.get(chatId) ?? null;
 }

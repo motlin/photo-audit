@@ -10,7 +10,16 @@ import type {Finding} from './classify.ts';
 import {formatDate} from './dateParts.ts';
 import {type ProposedRename} from './fix.ts';
 import {iterAttachments, openChatDb} from './imessage/chatDb.ts';
-import {type ContactsMap, getSelfName, loadContacts, resolveContact} from './imessage/contacts.ts';
+import {
+	type ChatOverridesMap,
+	type ContactsMap,
+	type LoadedContacts,
+	getChatOverride,
+	getSelfName,
+	loadContacts,
+	normalizeHandle,
+	resolveContact,
+} from './imessage/contacts.ts';
 import {proposeImessageFilename} from './imessage/proposeImessageFilename.ts';
 import {contextFor, type MediaItem} from './mediaSource.ts';
 import {formatCameraSuffix, formatImessageCameraSuffix, type CameraInfo} from './metadata.ts';
@@ -165,36 +174,93 @@ interface FixableEntry {
 	imessage?: {senderName: string | null; recipient: string | null};
 }
 
+interface NeedsNamingEntry {
+	chatIdentifier: string;
+	handleCount: number;
+	attachmentCount: number;
+	earliestMessageDate: Date | null;
+	latestMessageDate: Date | null;
+	resolvedParticipants: string[];
+}
+
+type ResolvedImessageEntry =
+	| {kind: 'resolved'; senderName: string | null; recipient: string | null}
+	| {kind: 'skip-unnamed-group'};
+
 /**
- * Resolve the (senderName, recipient) pair for a single iMessage attachment,
- * given its iMessage context and the loaded contacts map. The sender is the
- * current user (via the `self` contacts entry) for outgoing messages and the
- * resolved handle otherwise. The recipient prefers a group title, then the
- * resolved DM-partner handle (for outgoing DMs), then the current user (for
- * incoming DMs).
+ * Resolve the (senderName, recipient) pair for a single iMessage attachment.
+ *
+ * Recipient rules:
+ *   - chat.display_name non-empty                 -> use it as-is
+ *   - contacts.chats[chatIdentifier] override     -> use it
+ *   - chat has 1 handle                           -> DM, resolve the handle
+ *   - chat has 2 or 3 handles                     -> join resolved names with
+ *                                                    ', '; include self when
+ *                                                    !isFromMe; exclude sender
+ *   - chat has >3 handles                         -> SKIP this attachment
  */
 function resolveImessageEntry(
 	imessage: {
 		isFromMe: boolean;
 		handleId: string | null;
 		chatDisplayName: string | null;
-		dmPartnerHandle: string | null;
+		chatIdentifier: string | null;
+		chatHandles: string[];
 	},
 	contacts: ContactsMap,
-): {senderName: string | null; recipient: string | null} {
+	chats: ChatOverridesMap,
+): ResolvedImessageEntry {
 	const selfName = getSelfName(contacts);
 	const senderName = imessage.isFromMe ? selfName : resolveContact(imessage.handleId, contacts);
 	const groupTitle =
 		imessage.chatDisplayName !== null && imessage.chatDisplayName !== '' ? imessage.chatDisplayName : null;
-	let recipient: string | null;
 	if (groupTitle !== null) {
-		recipient = groupTitle;
-	} else if (imessage.isFromMe) {
-		recipient = imessage.dmPartnerHandle === null ? null : resolveContact(imessage.dmPartnerHandle, contacts);
-	} else {
-		recipient = selfName;
+		return {kind: 'resolved', senderName, recipient: groupTitle};
 	}
-	return {senderName, recipient};
+	const chatOverride = getChatOverride(imessage.chatIdentifier, chats);
+	if (chatOverride !== null) {
+		return {kind: 'resolved', senderName, recipient: chatOverride};
+	}
+	const handles = imessage.chatHandles;
+	if (handles.length === 1) {
+		const lone = handles[0] ?? null;
+		const recipient = imessage.isFromMe ? resolveContact(lone, contacts) : selfName;
+		return {kind: 'resolved', senderName, recipient};
+	}
+	if (handles.length === 2 || handles.length === 3) {
+		const normalizedSender = imessage.isFromMe ? null : normalizeHandle(imessage.handleId ?? '');
+		const others = handles.filter((handle) => normalizeHandle(handle) !== normalizedSender);
+		const resolvedOthers = others.map((handle) => resolveContact(handle, contacts) ?? handle);
+		const parts: string[] = [...resolvedOthers];
+		if (!imessage.isFromMe && selfName !== null) {
+			parts.push(selfName);
+		}
+		const recipient = parts.length === 0 ? null : parts.join(', ');
+		return {kind: 'resolved', senderName, recipient};
+	}
+	return {kind: 'skip-unnamed-group'};
+}
+
+function formatReportDate(date: Date | null): string {
+	if (date === null) {
+		return '-';
+	}
+	return date.toISOString().slice(0, 10);
+}
+
+function printNeedsNamingReport(entries: ReadonlyMap<string, NeedsNamingEntry>): void {
+	if (entries.size === 0) {
+		return;
+	}
+	process.stderr.write(
+		`\n${entries.size} unnamed group chats (>3 participants) were skipped — set a display_name in iMessage OR add a chats override in contacts.json, then re-run:\n`,
+	);
+	for (const entry of entries.values()) {
+		const participants = entry.resolvedParticipants.length === 0 ? '-' : entry.resolvedParticipants.join(', ');
+		process.stderr.write(
+			`  ${entry.chatIdentifier}  attachments=${entry.attachmentCount}  handles=${entry.handleCount}  ${formatReportDate(entry.earliestMessageDate)}..${formatReportDate(entry.latestMessageDate)}  participants: ${participants}\n`,
+		);
+	}
 }
 
 interface PlanOptions {
@@ -357,7 +423,11 @@ async function main(): Promise<void> {
 	const undoLogPath = join(outputRoot ?? root, UNDO_LOG_NAME);
 	const dbPath = values.db ?? join(homedir(), 'Library', 'Messages', 'chat.db');
 	const contactsPath = values.contacts ?? join(homedir(), '.config', 'photo-audit', 'contacts.json');
-	const contacts: ContactsMap = values.imessage ? loadContacts(contactsPath) : new Map();
+	const loadedContacts: LoadedContacts = values.imessage
+		? loadContacts(contactsPath)
+		: {handles: new Map(), chats: new Map(), self: null};
+	const contacts: ContactsMap = loadedContacts.handles;
+	const chatOverrides: ChatOverridesMap = loadedContacts.chats;
 
 	if (values.undo) {
 		await runUndo(outputRoot ?? root);
@@ -398,8 +468,42 @@ async function main(): Promise<void> {
 	const fixableEntries: FixableEntry[] = [];
 	const folderEntries: FolderFileEntry[] = [];
 	const datedFolders = new Map<string, DatedFolder>();
+	const needsNaming = new Map<string, NeedsNamingEntry>();
 	const exiftool = new ExifTool({geolocation: true});
 	let scanned = 0;
+
+	function accumulateNeedsNaming(
+		imessage: {
+			chatIdentifier: string | null;
+			chatHandles: string[];
+		},
+		messageDate: Date | null,
+	): void {
+		const chatId = imessage.chatIdentifier ?? '(unknown chat)';
+		const existing = needsNaming.get(chatId);
+		const resolvedParticipants = imessage.chatHandles.map((handle) => resolveContact(handle, contacts) ?? handle);
+		resolvedParticipants.sort();
+		if (existing === undefined) {
+			needsNaming.set(chatId, {
+				chatIdentifier: chatId,
+				handleCount: imessage.chatHandles.length,
+				attachmentCount: 1,
+				earliestMessageDate: messageDate,
+				latestMessageDate: messageDate,
+				resolvedParticipants,
+			});
+			return;
+		}
+		existing.attachmentCount += 1;
+		if (messageDate !== null) {
+			if (existing.earliestMessageDate === null || messageDate < existing.earliestMessageDate) {
+				existing.earliestMessageDate = messageDate;
+			}
+			if (existing.latestMessageDate === null || messageDate > existing.latestMessageDate) {
+				existing.latestMessageDate = messageDate;
+			}
+		}
+	}
 
 	async function* mediaItems(): AsyncGenerator<MediaItem> {
 		if (values.imessage) {
@@ -428,7 +532,16 @@ async function main(): Promise<void> {
 			counts[finding.kind] += 1;
 			scanned += 1;
 
-			const imessageEntry = imessage === null ? undefined : resolveImessageEntry(imessage, contacts);
+			const resolved = imessage === null ? null : resolveImessageEntry(imessage, contacts, chatOverrides);
+			if (resolved !== null && resolved.kind === 'skip-unnamed-group' && imessage !== null) {
+				const messageDate = item.kind === 'imessage' ? item.chat.messageDate : null;
+				accumulateNeedsNaming(imessage, messageDate);
+				continue;
+			}
+			const imessageEntry =
+				resolved !== null && resolved.kind === 'resolved'
+					? {senderName: resolved.senderName, recipient: resolved.recipient}
+					: undefined;
 
 			if (finding.kind === 'WRONG_DATE') {
 				printWrongDate(finding, root, location, cameraInfo, values['strip-camera-id']);
@@ -516,6 +629,8 @@ async function main(): Promise<void> {
 			await applyPlan(plan, undoLogPath);
 		}
 	}
+
+	printNeedsNamingReport(needsNaming);
 
 	console.log(`\n${'='.repeat(48)}`);
 	console.log(`Scanned ${scanned} files under ${root}`);

@@ -26,7 +26,8 @@ export interface ImessageContext {
 	isFromMe: boolean;
 	handleId: string | null;
 	chatDisplayName: string | null;
-	dmPartnerHandle: string | null;
+	chatIdentifier: string | null;
+	chatHandles: string[];
 }
 
 export interface MediaItemContext {
@@ -66,7 +67,8 @@ export async function contextFor(
 				isFromMe: item.chat.isFromMe,
 				handleId: item.chat.handleId,
 				chatDisplayName: item.chat.chatDisplayName,
-				dmPartnerHandle: item.chat.dmPartnerHandle,
+				chatIdentifier: item.chat.chatIdentifier,
+				chatHandles: item.chat.chatHandles,
 			},
 		};
 	}
