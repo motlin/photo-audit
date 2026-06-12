@@ -29,6 +29,7 @@
 		"@typescript/native-preview": "^7.0.0-dev.20260525.1",
 		"fallow": "^2.78.0",
 		"markdownlint-cli2": "^0.22.1",
+		"playwright": "^1.60.0",
 		"tsx": "^4.22.3",
 		"vite": "catalog:",
 		"vite-plus": "catalog:",
