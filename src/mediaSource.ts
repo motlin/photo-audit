@@ -38,6 +38,7 @@ export interface MediaItemContext {
 	cameraInfo: CameraInfo;
 	location: string | null;
 	imessage: ImessageContext | null;
+	imessageDedupeKey: string | null;
 }
 
 /**
@@ -63,6 +64,7 @@ export async function contextFor(
 			finding: result.finding,
 			cameraInfo: result.cameraInfo,
 			location: result.location,
+			imessageDedupeKey: result.dedupeKey,
 			imessage: {
 				isFromMe: item.chat.isFromMe,
 				handleId: item.chat.handleId,
@@ -84,5 +86,6 @@ export async function contextFor(
 		cameraInfo: result.cameraInfo,
 		location: result.location,
 		imessage: null,
+		imessageDedupeKey: null,
 	};
 }

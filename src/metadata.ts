@@ -1,5 +1,5 @@
 import {ExifDate, ExifDateTime, type Tags} from 'exiftool-vendored';
-import type {DateParts} from './dateParts.ts';
+import {formatDate, type DateParts} from './dateParts.ts';
 
 /**
  * Tag names that, when set, indicate the timestamp is from an editing session
@@ -341,6 +341,25 @@ export interface CameraInfo {
 	 * misleading on Apple's digital zoom modes. Null when the tag is absent.
 	 */
 	focalLength: number | null;
+}
+
+function datePartsKey(value: unknown, homeZone: string): string | null {
+	const parts = toLocalDateParts(value, homeZone);
+	return parts === null ? null : formatDate(parts);
+}
+
+export function extractImessageDedupeKey(tags: Tags, mimeType: string, homeZone: string): string | null {
+	const make = trimOrNull(tags.Make);
+	const model = trimOrNull(tags.Model);
+	if (make === null || model === null) {
+		return null;
+	}
+	const rawDate = mimeType.startsWith('video/') ? (tags.CreationDate ?? tags.CreateDate) : tags.DateTimeOriginal;
+	const dateKey = datePartsKey(rawDate, homeZone);
+	if (dateKey === null) {
+		return null;
+	}
+	return `${dateKey}\u0000${make}\u0000${model}`;
 }
 
 function trimOrNull(value: unknown): string | null {

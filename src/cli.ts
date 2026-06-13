@@ -1,6 +1,7 @@
 import {basename, dirname, join, relative, resolve} from 'node:path';
 import {homedir} from 'node:os';
 import {parseArgs} from 'node:util';
+import {statSync} from 'node:fs';
 import {ExifTool} from 'exiftool-vendored';
 import {mkdir} from 'node:fs/promises';
 import {applyLinks} from './applyLink.ts';
@@ -56,6 +57,9 @@ metadata against the date in its filename. Folder dates are informational only
                  to label senders in --imessage proposed filenames. Default
                  ~/.config/photo-audit/contacts.json. Missing file is OK;
                  unmapped handles fall back to the raw handle string.
+  --no-dedupe-imessage
+                 keep near-duplicate iMessage attachments that would otherwise
+                 be deduped by chat + capture date + camera (default on).
   --fix          add a correctly-dated hard-linked alias next to every
                  WRONG_DATE / MISSING_DATE file whose metadata is high-
                  confidence. Originals are preserved; the new alias points
@@ -171,7 +175,12 @@ interface FixableEntry {
 	cameraInfo: CameraInfo;
 	location: string | null;
 	sourceFolderName: string | null;
-	imessage?: {senderName: string | null; recipient: string | null};
+	imessage?: {
+		senderName: string | null;
+		recipient: string | null;
+		chatIdentifier: string | null;
+		dedupeKey: string | null;
+	};
 }
 
 interface NeedsNamingEntry {
@@ -271,6 +280,48 @@ interface PlanOptions {
 	outputRoot: string | null;
 }
 
+interface DedupeResult {
+	entries: FixableEntry[];
+	droppedCount: number;
+	savedBytes: number;
+}
+
+function dedupeImessageEntries(entries: readonly FixableEntry[], enabled: boolean): DedupeResult {
+	if (!enabled) {
+		return {entries: [...entries], droppedCount: 0, savedBytes: 0};
+	}
+	const kept = new Map<string, {entry: FixableEntry; size: number}>();
+	const dropped = new Set<FixableEntry>();
+	let droppedCount = 0;
+	let savedBytes = 0;
+
+	for (const entry of entries) {
+		const imessage = entry.imessage;
+		if (imessage === undefined || imessage.chatIdentifier === null || imessage.dedupeKey === null) {
+			continue;
+		}
+		const key = `${imessage.chatIdentifier}\u0000${imessage.dedupeKey}`;
+		const size = statSync(entry.finding.path).size;
+		const existing = kept.get(key);
+		if (existing === undefined) {
+			kept.set(key, {entry, size});
+			continue;
+		}
+		if (size > existing.size) {
+			dropped.add(existing.entry);
+			droppedCount += 1;
+			savedBytes += existing.size;
+			kept.set(key, {entry, size});
+		} else {
+			dropped.add(entry);
+			droppedCount += 1;
+			savedBytes += size;
+		}
+	}
+
+	return {entries: entries.filter((entry) => !dropped.has(entry)), droppedCount, savedBytes};
+}
+
 /**
  * Build the list of hard-link plan entries for fixable findings, dropping
  * those whose metadata is date-only and printing a skip reason for each one
@@ -368,6 +419,7 @@ async function runUndo(root: string): Promise<void> {
 async function main(): Promise<void> {
 	const {values, positionals} = parseArgs({
 		allowPositionals: true,
+		allowNegative: true,
 		options: {
 			limit: {type: 'string'},
 			'show-all': {type: 'boolean', default: false},
@@ -379,6 +431,7 @@ async function main(): Promise<void> {
 			'strip-camera-id': {type: 'boolean', default: false},
 			output: {type: 'string'},
 			imessage: {type: 'boolean', default: false},
+			'dedupe-imessage': {type: 'boolean'},
 			db: {type: 'string'},
 			contacts: {type: 'string'},
 			help: {type: 'boolean', short: 'h', default: false},
@@ -426,6 +479,7 @@ async function main(): Promise<void> {
 	const undoLogPath = join(outputRoot ?? root, UNDO_LOG_NAME);
 	const dbPath = values.db ?? join(homedir(), 'Library', 'Messages', 'chat.db');
 	const contactsPath = values.contacts ?? join(homedir(), '.config', 'photo-audit', 'contacts.json');
+	const dedupeImessage = values.imessage && values['dedupe-imessage'] !== false;
 	const loadedContacts: LoadedContacts = values.imessage
 		? loadContacts(contactsPath)
 		: {handles: new Map(), chats: new Map(), self: null};
@@ -531,7 +585,7 @@ async function main(): Promise<void> {
 				break;
 			}
 			const ctx = await contextFor(exiftool, item, root, homeZone);
-			const {finding, location, cameraInfo, sourceFolderName, imessage} = ctx;
+			const {finding, location, cameraInfo, sourceFolderName, imessage, imessageDedupeKey} = ctx;
 			counts[finding.kind] += 1;
 			scanned += 1;
 
@@ -543,7 +597,12 @@ async function main(): Promise<void> {
 			}
 			const imessageEntry =
 				resolved !== null && resolved.kind === 'resolved'
-					? {senderName: resolved.senderName, recipient: resolved.recipient}
+					? {
+							senderName: resolved.senderName,
+							recipient: resolved.recipient,
+							chatIdentifier: imessage?.chatIdentifier ?? null,
+							dedupeKey: imessageDedupeKey,
+						}
 					: undefined;
 
 			if (finding.kind === 'WRONG_DATE') {
@@ -611,7 +670,11 @@ async function main(): Promise<void> {
 
 	if (fixableEntries.length > 0 && (values.fix || values.plan !== undefined)) {
 		console.log(`\n${'-'.repeat(48)}`);
-		const plan = planLinksFromFindings(fixableEntries, root, {
+		const deduped = dedupeImessageEntries(fixableEntries, dedupeImessage);
+		if (deduped.droppedCount > 0) {
+			process.stderr.write(`Deduped ${deduped.droppedCount} attachments (${deduped.savedBytes} bytes saved)\n`);
+		}
+		const plan = planLinksFromFindings(deduped.entries, root, {
 			stripCameraId: values['strip-camera-id'],
 			outputRoot,
 		});

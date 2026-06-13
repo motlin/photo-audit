@@ -4,7 +4,13 @@ import {classify, type Finding} from './classify.ts';
 import type {DateParts} from './dateParts.ts';
 import {formatPlaceFromTags} from './geocode.ts';
 import {type AttachmentRow, dateToPartsInZone} from './imessage/chatDb.ts';
-import {extractCameraInfo, extractDateOrEdit, type CameraInfo, type MetadataConfidence} from './metadata.ts';
+import {
+	extractCameraInfo,
+	extractDateOrEdit,
+	extractImessageDedupeKey,
+	type CameraInfo,
+	type MetadataConfidence,
+} from './metadata.ts';
 import {parseDateFromString} from './parseDate.ts';
 
 /**
@@ -48,6 +54,8 @@ export interface AuditResult {
 	location: string | null;
 	/** Camera Make and Model as extracted from the file's metadata. */
 	cameraInfo: CameraInfo;
+	/** Stable key used to dedupe iMessage near-duplicates. Null for filesystem entries. */
+	dedupeKey: string | null;
 }
 
 /**
@@ -82,7 +90,7 @@ export async function auditFile(
 		filenameDate: parseDateFromString(basename(path)),
 		folderDate: folderDateFor(path, root),
 	});
-	return {finding, location: formatPlaceFromTags(tags), cameraInfo: extractCameraInfo(tags)};
+	return {finding, location: formatPlaceFromTags(tags), cameraInfo: extractCameraInfo(tags), dedupeKey: null};
 }
 
 /**
@@ -134,5 +142,10 @@ export async function auditImessageFile(
 		filenameDate: null,
 		folderDate: null,
 	});
-	return {finding, location: formatPlaceFromTags(tags), cameraInfo: extractCameraInfo(tags)};
+	return {
+		finding,
+		location: formatPlaceFromTags(tags),
+		cameraInfo: extractCameraInfo(tags),
+		dedupeKey: extractImessageDedupeKey(tags, attachment.mimeType, homeZone),
+	};
 }
