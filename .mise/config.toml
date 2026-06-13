@@ -1,5 +1,6 @@
 [tools]
 just = "1.52.0"
-node = "26.2.0"
+node = "26.3.0"
 "npm:vite-plus" = "0.1.24"
+"pipx:yamllint" = "latest"
 pre-commit = "4.6.0"
