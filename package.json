@@ -5,7 +5,8 @@
 	"description": "Identify (and later fix) date problems in a photo/video library",
 	"type": "module",
 	"scripts": {
-		"build": "tsgo --noEmit && vp build",
+		"preinstall": "npx only-allow pnpm",
+		"build": "tsgo && vp build",
 		"oxlint": "vp lint . --fix",
 		"oxlint:ci": "vp lint . --format github",
 		"fmt": "vp fmt",
@@ -25,9 +26,9 @@
 	},
 	"devDependencies": {
 		"@types/better-sqlite3": "^7.6.13",
-		"@types/node": "^25.9.1",
-		"@typescript/native-preview": "^7.0.0-dev.20260525.1",
-		"fallow": "^2.78.0",
+		"@types/node": "^25.9.3",
+		"@typescript/native-preview": "^7.0.0-dev.20260611.2",
+		"fallow": "^2.95.0",
 		"markdownlint-cli2": "^0.22.1",
 		"playwright": "^1.60.0",
 		"tsx": "^4.22.3",
