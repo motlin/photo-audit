@@ -29,7 +29,7 @@ check: install
 
 # Run tests
 test *args: install
-    {{ if ci != "" { "vp exec playwright install --with-deps chromium" } else { "true" } }}
+    {{ if ci != "" { "if test -x node_modules/.bin/playwright; then vp exec playwright install --with-deps chromium; fi" } else { "true" } }}
     vp run test:run {{args}}
 
 # Type-check the project
@@ -52,8 +52,12 @@ storybook *args: install
 audit *args: install
     vp run audit {{args}}
 
+# Run pre-commit hooks on all files (same as CI's pre-commit job)
+pre-commit: install
+    pre-commit run --all-files
+
 # Run all pre-commit checks
 [arg("quick", long, value="true", help="Skip tests")]
-precommit quick="": check build fallow
+precommit quick="": check build fallow pre-commit
     {{ if quick != "true" { "just test" } else { "true" } }}
     @echo "All pre-commit checks passed!"
