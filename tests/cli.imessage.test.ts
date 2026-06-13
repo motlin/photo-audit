@@ -332,8 +332,10 @@ describe('cli --imessage', () => {
 	it('uses arrow form for incoming DMs and outgoing DMs', async () => {
 		const incomingDmPath = join(dir, 'incoming.jpg');
 		const outgoingDmPath = join(dir, 'outgoing.jpg');
+		const orphanIncomingPath = join(dir, 'orphan.jpg');
 		await writeFile(incomingDmPath, minimalJpegBuffer());
 		await writeFile(outgoingDmPath, minimalJpegBuffer());
+		await writeFile(orphanIncomingPath, minimalJpegBuffer());
 
 		const dbPath = join(dir, 'chat.db');
 		const db = new BetterSqlite3(dbPath);
@@ -361,6 +363,9 @@ describe('cli --imessage', () => {
 			db.prepare(
 				'INSERT INTO attachment (ROWID, filename, transfer_name, mime_type, created_date, is_sticker) VALUES (?, ?, ?, ?, ?, ?)',
 			).run(2, outgoingDmPath, 'IMG.jpg', 'image/jpeg', unixSecondsToCocoaSeconds(baseUnix + 60n), 0);
+			db.prepare(
+				'INSERT INTO attachment (ROWID, filename, transfer_name, mime_type, created_date, is_sticker) VALUES (?, ?, ?, ?, ?, ?)',
+			).run(3, orphanIncomingPath, 'IMG.jpg', 'image/jpeg', unixSecondsToCocoaSeconds(baseUnix + 120n), 0);
 
 			// Incoming DM from Alice.
 			db.prepare('INSERT INTO message (ROWID, date, is_from_me, handle_id) VALUES (?, ?, ?, ?)').run(
@@ -376,8 +381,15 @@ describe('cli --imessage', () => {
 				1,
 				null,
 			);
+			db.prepare('INSERT INTO message (ROWID, date, is_from_me, handle_id) VALUES (?, ?, ?, ?)').run(
+				102,
+				unixSecondsToCocoaNanos(baseUnix + 120n),
+				0,
+				20,
+			);
 			db.prepare('INSERT INTO message_attachment_join (message_id, attachment_id) VALUES (?, ?)').run(100, 1);
 			db.prepare('INSERT INTO message_attachment_join (message_id, attachment_id) VALUES (?, ?)').run(101, 2);
+			db.prepare('INSERT INTO message_attachment_join (message_id, attachment_id) VALUES (?, ?)').run(102, 3);
 			db.prepare('INSERT INTO chat_message_join (chat_id, message_id) VALUES (?, ?)').run(10, 100);
 			db.prepare('INSERT INTO chat_message_join (chat_id, message_id) VALUES (?, ?)').run(11, 101);
 			db.prepare('INSERT INTO chat_handle_join (chat_id, handle_id) VALUES (?, ?)').run(10, 20);
@@ -410,7 +422,7 @@ describe('cli --imessage', () => {
 
 		const planText = await readFile(planPath, 'utf8');
 		const lines = planText.split('\n').filter((line) => line.trim() !== '');
-		expect(lines).toHaveLength(2);
+		expect(lines).toHaveLength(3);
 		const entries = lines.map((line) => JSON.parse(line) as {from: string; to: string; kind: string});
 		const byFrom = new Map(entries.map((entry) => [entry.from, entry]));
 
@@ -423,6 +435,11 @@ describe('cli --imessage', () => {
 		expect(outgoing).toBeDefined();
 		const outgoingName = outgoing!.to.split('/').pop() ?? '';
 		expect(outgoingName).toBe('2024-06-15 10.11.45 (Craig → Alice) outgoing.jpg');
+
+		const orphanIncoming = byFrom.get(orphanIncomingPath);
+		expect(orphanIncoming).toBeDefined();
+		const orphanIncomingName = orphanIncoming!.to.split('/').pop() ?? '';
+		expect(orphanIncomingName).toBe('2024-06-15 10.12.45 (Alice → Craig) orphan.jpg');
 	});
 
 	it('skips unnamed groups with >3 handles and reports them; uses contacts.chats overrides when present', async () => {

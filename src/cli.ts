@@ -222,6 +222,9 @@ function resolveImessageEntry(
 		return {kind: 'resolved', senderName, recipient: chatOverride};
 	}
 	const handles = imessage.chatHandles;
+	if (handles.length === 0 && imessage.handleId !== null && !imessage.isFromMe) {
+		return {kind: 'resolved', senderName, recipient: selfName};
+	}
 	if (handles.length === 1) {
 		const lone = handles[0] ?? null;
 		const recipient = imessage.isFromMe ? resolveContact(lone, contacts) : selfName;
