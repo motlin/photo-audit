@@ -43,6 +43,27 @@ describe('pickDaySuffix', () => {
 	it('returns null when both source folder and place are null', () => {
 		expect(pickDaySuffix(null, null)).toBeNull();
 	});
+
+	it('strips the iMazing "<date> - <event>" separator down to the event', () => {
+		expect(pickDaySuffix('2020-12-25 - Christmas Day', null)).toBe('Christmas Day');
+	});
+
+	it('strips an iMazing "<date> - <date> - <event>" range prefix down to the event', () => {
+		expect(pickDaySuffix('2017-04-22 - 2017-04-22 - Home', null)).toBe('Home');
+	});
+
+	it('treats an iMazing date-range folder with no event as non-informative', () => {
+		expect(pickDaySuffix('2009-04-17 - 2009-04-17', null)).toBeNull();
+		expect(pickDaySuffix('2009-04-17 - 2009-04-17', 'Edgewater, NJ')).toBe('Edgewater, NJ');
+	});
+
+	it('still strips a plain date folder to nothing', () => {
+		expect(pickDaySuffix('2006-03-29', null)).toBeNull();
+	});
+
+	it('keeps a space-separated event title (no dash) unchanged', () => {
+		expect(pickDaySuffix("2015-07-15 Levi's Birth", null)).toBe("Levi's Birth");
+	});
 });
 
 describe('computeOutputDirectory', () => {
@@ -100,5 +121,38 @@ describe('computeOutputDirectory', () => {
 				includeDayFolder: false,
 			}),
 		).toBe('/out/2020 Decade/2026/2026-05');
+	});
+
+	it('drops the event suffix when the folder year differs from the file year (grab-bag folder)', () => {
+		expect(
+			computeOutputDirectory({
+				outputRoot: '/library',
+				metadataDate: date(2026, 4, 11),
+				sourceFolderName: '2000-01-01 - New Year’s Day',
+				place: null,
+			}),
+		).toBe('/library/2020 Decade/2026/2026-04/2026-04-11');
+	});
+
+	it('falls back to the place when a cross-year folder suffix is dropped', () => {
+		expect(
+			computeOutputDirectory({
+				outputRoot: '/library',
+				metadataDate: date(2026, 4, 11),
+				sourceFolderName: '2000-01-01 - New Year’s Day',
+				place: 'Edgewater, New Jersey, United States',
+			}),
+		).toBe('/library/2020 Decade/2026/2026-04/2026-04-11 Edgewater, New Jersey, United States');
+	});
+
+	it('keeps the event suffix for a same-year multi-day event folder', () => {
+		expect(
+			computeOutputDirectory({
+				outputRoot: '/library',
+				metadataDate: date(2015, 7, 18),
+				sourceFolderName: "2015-07-15 - Levi's Birth",
+				place: null,
+			}),
+		).toBe("/library/2010 Decade/2015/2015-07/2015-07-18 Levi's Birth");
 	});
 });

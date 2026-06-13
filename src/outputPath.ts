@@ -42,13 +42,38 @@ function folderTitle(folderName: string | null): string | null {
 		return null;
 	}
 	if (parseDateFromString(trimmed) !== null) {
+		// Strip a leading date, then an optional " - <date>" range component
+		// (iMazing names folders "<date> - <date> - <event>"), then any leading
+		// separator dash, leaving just the event title. A bare date or a plain
+		// date range collapses to nothing.
+		const datePattern = /^(?:\d{4}-\d{2}-\d{2}|\d{4}-\d{2}|\d{4}|\d{8})/;
 		const withoutDate = trimmed
-			.replace(/^\d{4}(-\d{2}){0,2}\s*/, '')
-			.replace(/^\d{8}\s*/, '')
+			.replace(datePattern, '')
+			.replace(/^\s*-\s*(?:\d{4}-\d{2}-\d{2}|\d{4}-\d{2}|\d{4}|\d{8})/, '')
+			.replace(/^\s*-?\s*/, '')
 			.trim();
 		return withoutDate === '' ? null : withoutDate;
 	}
 	return trimmed;
+}
+
+/**
+ * Drop the source folder as a suffix source when its name carries a date whose
+ * year differs from the file's own year. Such a folder is a grab-bag or
+ * misfile (e.g. iMazing's "2000-01-01 - New Year's Day" holding recent photos),
+ * and its event title does not belong on the file's real date. Same-year
+ * differences are kept: multi-day event folders legitimately hold later-day
+ * photos, and those should keep the event suffix.
+ */
+function suffixFolderName(sourceFolderName: string | null, metadataYear: number): string | null {
+	if (sourceFolderName === null) {
+		return null;
+	}
+	const folderDate = parseDateFromString(sourceFolderName.trim());
+	if (folderDate !== null && folderDate.year !== metadataYear) {
+		return null;
+	}
+	return sourceFolderName;
 }
 
 /**
@@ -103,7 +128,7 @@ export function computeOutputDirectory(ctx: OutputPathContext): string {
 		throw new Error('computeOutputDirectory requires a day-precision metadata date');
 	}
 	const dayStr = `${yearMonth}-${pad(day)}`;
-	const suffix = pickDaySuffix(ctx.sourceFolderName, ctx.place);
+	const suffix = pickDaySuffix(suffixFolderName(ctx.sourceFolderName, year), ctx.place);
 	const dayFolder = suffix === null ? dayStr : `${dayStr} ${suffix}`;
 	return join(ctx.outputRoot, decade, yearStr, yearMonth, dayFolder);
 }

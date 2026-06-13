@@ -75,6 +75,12 @@ metadata against the date in its filename. Folder dates are informational only
                  IMG_063842, DSC_1234, PXL_20240315_..., so the new name is
                  just the date prefix + extension. Human-named stems are
                  always preserved.
+  --link-all     organize a trusted, already-dated export: hard-link EVERY
+                 dated file (not just date-problem ones), including files whose
+                 metadata already agrees with their folder. Names are the clean
+                 iMessage style (<date> <time> (camera), IMG stem stripped) and
+                 the day folder keeps the source folder's event-name suffix.
+                 Pair with --output on the same volume as the source.
   --output ROOT  put new hard-linked aliases under a separate hierarchy at
                  ROOT: <ROOT>/<YYYY0> Decade/<YYYY>/<YYYY-MM>/<YYYY-MM-DD
                  [suffix]>/. The suffix prefers a user-curated folder title
@@ -169,7 +175,7 @@ function printFolderWarning(warning: FolderWarning, root: string): void {
 	}
 }
 
-type Fixable = Extract<Finding, {kind: 'WRONG_DATE' | 'MISSING_DATE'}>;
+type Fixable = Extract<Finding, {kind: 'WRONG_DATE' | 'MISSING_DATE' | 'CONSISTENT'}>;
 interface FixableEntry {
 	finding: Fixable;
 	cameraInfo: CameraInfo;
@@ -278,6 +284,12 @@ function printNeedsNamingReport(entries: ReadonlyMap<string, NeedsNamingEntry>):
 interface PlanOptions {
 	stripCameraId: boolean;
 	outputRoot: string | null;
+	/**
+	 * Link-all mode: filesystem entries (including CONSISTENT files) get clean
+	 * iMessage-style names (date + `(camera)` + stripped IMG stem) while keeping
+	 * the day-folder + event-suffix layout. Used to organize a trusted export.
+	 */
+	linkAll: boolean;
 }
 
 interface DedupeResult {
@@ -331,23 +343,39 @@ function dedupeImessageEntries(entries: readonly FixableEntry[], enabled: boolea
 function planLinksFromFindings(entries: readonly FixableEntry[], root: string, options: PlanOptions): PlanEntry[] {
 	const plan: PlanEntry[] = [];
 	for (const {finding, cameraInfo, location, sourceFolderName, imessage} of entries) {
-		if (finding.metadataConfidence === 'date-only') {
+		// CONSISTENT findings carry no metadataConfidence; the `in` guard keeps the
+		// access type-safe now that CONSISTENT can reach this loop in link-all mode.
+		if ('metadataConfidence' in finding && finding.metadataConfidence === 'date-only') {
 			console.log(`SKIPPED (metadata is date-only): ${relative(root, finding.path)}`);
 			continue;
 		}
-		const proposed =
-			imessage === undefined
-				? proposeFilename(basename(finding.path), finding.metadataDate, {
-						stripCameraId: options.stripCameraId,
-						cameraSuffix: formatCameraSuffix(cameraInfo),
-					})
-				: proposeImessageFilename({
-						originalName: basename(finding.path),
-						date: finding.metadataDate,
-						senderName: imessage.senderName,
-						recipient: imessage.recipient,
-						cameraSuffix: formatImessageCameraSuffix(cameraInfo),
-					});
+		let proposed: string;
+		if (imessage !== undefined) {
+			proposed = proposeImessageFilename({
+				originalName: basename(finding.path),
+				date: finding.metadataDate,
+				senderName: imessage.senderName,
+				recipient: imessage.recipient,
+				cameraSuffix: formatImessageCameraSuffix(cameraInfo),
+			});
+		} else if (options.linkAll) {
+			// proposeImessageFilename doubles as the shared clean-name composer:
+			// with no sender/recipient it emits `<date+time> (camera).<ext>` and
+			// strips the IMG_###### stem. The day-folder + event suffix still comes
+			// from computeOutputDirectory below.
+			proposed = proposeImessageFilename({
+				originalName: basename(finding.path),
+				date: finding.metadataDate,
+				senderName: null,
+				recipient: null,
+				cameraSuffix: formatImessageCameraSuffix(cameraInfo),
+			});
+		} else {
+			proposed = proposeFilename(basename(finding.path), finding.metadataDate, {
+				stripCameraId: options.stripCameraId,
+				cameraSuffix: formatCameraSuffix(cameraInfo),
+			});
+		}
 		const targetDir =
 			options.outputRoot === null
 				? dirname(finding.path)
@@ -429,6 +457,7 @@ async function main(): Promise<void> {
 			plan: {type: 'string'},
 			apply: {type: 'string'},
 			'strip-camera-id': {type: 'boolean', default: false},
+			'link-all': {type: 'boolean', default: false},
 			output: {type: 'string'},
 			imessage: {type: 'boolean', default: false},
 			'dedupe-imessage': {type: 'boolean'},
@@ -629,6 +658,11 @@ async function main(): Promise<void> {
 				if (values['show-all']) {
 					printMissingDate(finding, root, location, cameraInfo, values['strip-camera-id']);
 				}
+			} else if (finding.kind === 'CONSISTENT' && values['link-all']) {
+				// Link-all mode organizes a trusted export: a CONSISTENT file (EXIF
+				// date agrees with its folder) is still worth a clean alias. Only fs
+				// items reach CONSISTENT, so there is never an imessage block here.
+				fixableEntries.push({finding, cameraInfo, location, sourceFolderName});
 			} else if (finding.kind === 'NO_METADATA_DATE' && values['show-all']) {
 				console.log(`\nNO METADATA DATE  ${relative(root, finding.path)}`);
 			}
@@ -677,6 +711,7 @@ async function main(): Promise<void> {
 		const plan = planLinksFromFindings(deduped.entries, root, {
 			stripCameraId: values['strip-camera-id'],
 			outputRoot,
+			linkAll: values['link-all'],
 		});
 		if (values.plan !== undefined) {
 			await writePlanFile(values.plan, plan);

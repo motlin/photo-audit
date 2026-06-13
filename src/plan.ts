@@ -6,7 +6,7 @@ export interface PlanEntry {
 	/** Absolute path of the hard-linked alias to create. */
 	to: string;
 	/** Which finding kind motivated the link, for human review. */
-	kind: 'WRONG_DATE' | 'MISSING_DATE';
+	kind: 'WRONG_DATE' | 'MISSING_DATE' | 'CONSISTENT';
 }
 
 function formatPlanEntry(entry: PlanEntry): string {
