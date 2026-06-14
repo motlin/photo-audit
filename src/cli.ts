@@ -1,7 +1,8 @@
 import {basename, dirname, join, relative, resolve} from 'node:path';
 import {homedir} from 'node:os';
 import {parseArgs} from 'node:util';
-import {statSync} from 'node:fs';
+import {closeSync, openSync, readSync, statSync} from 'node:fs';
+import {createHash} from 'node:crypto';
 import {ExifTool} from 'exiftool-vendored';
 import {mkdir} from 'node:fs/promises';
 import {applyLinks} from './applyLink.ts';
@@ -27,6 +28,7 @@ import {formatCameraSuffix, formatImessageCameraSuffix, type CameraInfo} from '.
 import {computeOutputDirectory} from './outputPath.ts';
 import {type PlanEntry, readPlanFile, writePlanFile} from './plan.ts';
 import {probeHardLinkSupport} from './probeHardLink.ts';
+import {resolveCollisions} from './resolveCollisions.ts';
 import {planFolderWarnings, type DatedFolder, type FolderFileEntry, type FolderWarning} from './folderWarnings.ts';
 import {parseDateFromString} from './parseDate.ts';
 import {proposeFilename} from './proposeName.ts';
@@ -81,6 +83,12 @@ metadata against the date in its filename. Folder dates are informational only
                  iMessage style (<date> <time> (camera), IMG stem stripped) and
                  the day folder keeps the source folder's event-name suffix.
                  Pair with --output on the same volume as the source.
+  --dedupe-collisions
+                 when applying, resolve two files that propose the same name by
+                 content: drop verified byte-duplicates (SHA-256) keeping one,
+                 and disambiguate genuinely-distinct files (same timestamp,
+                 different photo) by restoring their IMG stem — instead of
+                 silently skipping every colliding file.
   --output ROOT  put new hard-linked aliases under a separate hierarchy at
                  ROOT: <ROOT>/<YYYY0> Decade/<YYYY>/<YYYY-MM>/<YYYY-MM-DD
                  [suffix]>/. The suffix prefers a user-curated folder title
@@ -396,11 +404,37 @@ function planLinksFromFindings(entries: readonly FixableEntry[], root: string, o
  * the undo log at `undoLogPath`. Creates any missing parent directories of
  * `to` paths.
  */
-async function applyPlan(plan: readonly PlanEntry[], undoLogPath: string): Promise<void> {
-	for (const {to} of plan) {
+function sha256Sync(path: string): string {
+	const fd = openSync(path, 'r');
+	try {
+		const hash = createHash('sha256');
+		const buffer = Buffer.allocUnsafe(1 << 20);
+		let bytesRead = readSync(fd, buffer, 0, buffer.length, null);
+		while (bytesRead > 0) {
+			hash.update(buffer.subarray(0, bytesRead));
+			bytesRead = readSync(fd, buffer, 0, buffer.length, null);
+		}
+		return hash.digest('hex');
+	} finally {
+		closeSync(fd);
+	}
+}
+
+async function applyPlan(plan: readonly PlanEntry[], undoLogPath: string, dedupeCollisions: boolean): Promise<void> {
+	let candidates: ProposedRename[] = plan.map(({from, to}) => ({from, to}));
+	if (dedupeCollisions) {
+		// Resolve same-name collisions by content: drop verified byte-duplicates,
+		// disambiguate genuinely distinct files (same timestamp, different photo)
+		// by restoring their source stem instead of silently dropping them.
+		const {resolved, droppedDuplicates} = resolveCollisions(candidates, (p) => statSync(p).size, sha256Sync);
+		if (droppedDuplicates.length > 0) {
+			process.stderr.write(`Dropped ${droppedDuplicates.length} true byte-duplicate(s), verified by SHA-256.\n`);
+		}
+		candidates = resolved;
+	}
+	for (const {to} of candidates) {
 		await mkdir(dirname(to), {recursive: true});
 	}
-	const candidates: ProposedRename[] = plan.map(({from, to}) => ({from, to}));
 	const outcomes = await applyLinks(candidates, undoLogPath, () => new Date().toISOString());
 	for (const outcome of outcomes) {
 		if (outcome.kind === 'linked') {
@@ -458,6 +492,7 @@ async function main(): Promise<void> {
 			apply: {type: 'string'},
 			'strip-camera-id': {type: 'boolean', default: false},
 			'link-all': {type: 'boolean', default: false},
+			'dedupe-collisions': {type: 'boolean', default: false},
 			output: {type: 'string'},
 			imessage: {type: 'boolean', default: false},
 			'dedupe-imessage': {type: 'boolean'},
@@ -536,7 +571,7 @@ async function main(): Promise<void> {
 			return;
 		}
 		console.log(`Applying ${plan.length} entries from ${values.apply}`);
-		await applyPlan(plan, undoLogPath);
+		await applyPlan(plan, undoLogPath, values['dedupe-collisions']);
 		return;
 	}
 	const limit = values.limit === undefined ? Infinity : Number(values.limit);
@@ -727,7 +762,7 @@ async function main(): Promise<void> {
 				return;
 			}
 			console.log('Applying --fix file links');
-			await applyPlan(plan, undoLogPath);
+			await applyPlan(plan, undoLogPath, values['dedupe-collisions']);
 		}
 	}
 
