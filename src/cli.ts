@@ -638,7 +638,7 @@ async function main(): Promise<void> {
 			}
 			return;
 		}
-		for await (const path of walkMedia(root)) {
+		for await (const path of walkMedia(root, outputRoot ?? undefined)) {
 			yield {kind: 'fs', path};
 		}
 	}
