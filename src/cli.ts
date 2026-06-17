@@ -89,6 +89,10 @@ metadata against the date in its filename. Folder dates are informational only
                  and disambiguate genuinely-distinct files (same timestamp,
                  different photo) by restoring their IMG stem — instead of
                  silently skipping every colliding file.
+  --exclude DIR  skip this directory (and everything under it) while walking
+                 <directory>. Repeatable. Use it to point --link-all at a whole
+                 volume while excluding device-backup or other non-photo trees.
+                 The --output hierarchy is always excluded automatically.
   --output ROOT  put new hard-linked aliases under a separate hierarchy at
                  ROOT: <ROOT>/<YYYY0> Decade/<YYYY>/<YYYY-MM>/<YYYY-MM-DD
                  [suffix]>/. The suffix prefers a user-curated folder title
@@ -494,6 +498,7 @@ async function main(): Promise<void> {
 			'link-all': {type: 'boolean', default: false},
 			'dedupe-collisions': {type: 'boolean', default: false},
 			output: {type: 'string'},
+			exclude: {type: 'string', multiple: true},
 			imessage: {type: 'boolean', default: false},
 			'dedupe-imessage': {type: 'boolean'},
 			db: {type: 'string'},
@@ -540,6 +545,10 @@ async function main(): Promise<void> {
 	const root = target === undefined ? resolve('.') : resolve(target);
 
 	const outputRoot = values.output === undefined ? null : resolve(values.output);
+	const excludeRoots = [
+		...(outputRoot === null ? [] : [outputRoot]),
+		...(values.exclude ?? []).map((path) => resolve(path)),
+	];
 	const undoLogPath = join(outputRoot ?? root, UNDO_LOG_NAME);
 	const dbPath = values.db ?? join(homedir(), 'Library', 'Messages', 'chat.db');
 	const contactsPath = values.contacts ?? join(homedir(), '.config', 'photo-audit', 'contacts.json');
@@ -638,7 +647,7 @@ async function main(): Promise<void> {
 			}
 			return;
 		}
-		for await (const path of walkMedia(root, outputRoot ?? undefined)) {
+		for await (const path of walkMedia(root, excludeRoots)) {
 			yield {kind: 'fs', path};
 		}
 	}

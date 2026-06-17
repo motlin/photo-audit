@@ -4,9 +4,9 @@ import {join} from 'node:path';
 import {afterAll, beforeAll, describe, expect, it} from 'vitest';
 import {walkMedia} from '../src/walk.ts';
 
-async function collect(root: string, excludeRoot?: string): Promise<string[]> {
+async function collect(root: string, excludeRoots: string[] = []): Promise<string[]> {
 	const out: string[] = [];
-	for await (const p of walkMedia(root, excludeRoot)) {
+	for await (const p of walkMedia(root, excludeRoots)) {
 		out.push(p);
 	}
 	return out.sort();
@@ -45,11 +45,16 @@ describe('walkMedia', () => {
 		);
 	});
 
-	it('skips the excludeRoot subtree so the output hierarchy is not re-walked', async () => {
-		const found = await collect(root, join(root, 'Organized'));
+	it('skips an excluded subtree so the output hierarchy is not re-walked', async () => {
+		const found = await collect(root, [join(root, 'Organized')]);
 		expect(found).toEqual(
 			[join(root, 'event', 'a.heic'), join(root, 'event', 'nested', 'b.mov'), join(root, 'top.jpg')].sort(),
 		);
 		expect(found).not.toContain(join(root, 'Organized', '2020 Decade', 'linked.jpg'));
+	});
+
+	it('skips every listed exclude root', async () => {
+		const found = await collect(root, [join(root, 'Organized'), join(root, 'event')]);
+		expect(found).toEqual([join(root, 'top.jpg')]);
 	});
 });

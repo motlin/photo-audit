@@ -45,9 +45,10 @@ function isMediaFile(name: string): boolean {
 
 /**
  * True when `dir` is at or below `excludeRoot`. Used to keep the walk from
- * descending into the `--output` hierarchy when it sits inside the scanned
- * tree — otherwise a whole-volume run would re-discover the organized hard
- * links it just created and try to link them again.
+ * descending into the `--output` hierarchy (and other excluded subtrees like
+ * device-backup folders) when they sit inside the scanned tree — otherwise a
+ * whole-volume run would re-discover the organized hard links it just created,
+ * or grind through millions of backup files.
  */
 function isWithin(dir: string, excludeRoot: string): boolean {
 	const rel = relative(excludeRoot, dir);
@@ -59,12 +60,13 @@ function isWithin(dir: string, excludeRoot: string): boolean {
  *
  * Skips hidden entries — that excludes macOS AppleDouble (`._*`) sidecars and
  * package directories (`.photoslibrary`, `.lrdata`) that are not loose photos.
- * When `excludeRoot` is given, the subtree at or below it is skipped entirely
- * (so the output hierarchy is never re-walked into the plan). Pass absolute,
- * resolved paths so the prefix comparison is reliable.
+ * Any subtree at or below one of `excludeRoots` is skipped entirely (before its
+ * directory is even read), so the output hierarchy and explicitly-excluded
+ * folders are never walked. Pass absolute, resolved paths so the prefix
+ * comparison is reliable.
  */
-export async function* walkMedia(root: string, excludeRoot?: string): AsyncGenerator<string> {
-	if (excludeRoot !== undefined && isWithin(root, excludeRoot)) {
+export async function* walkMedia(root: string, excludeRoots: readonly string[] = []): AsyncGenerator<string> {
+	if (excludeRoots.some((excludeRoot) => isWithin(root, excludeRoot))) {
 		return;
 	}
 	let entries;
@@ -79,7 +81,7 @@ export async function* walkMedia(root: string, excludeRoot?: string): AsyncGener
 		}
 		const full = join(root, entry.name);
 		if (entry.isDirectory()) {
-			yield* walkMedia(full, excludeRoot);
+			yield* walkMedia(full, excludeRoots);
 		} else if (entry.isFile() && isMediaFile(entry.name)) {
 			yield full;
 		}
