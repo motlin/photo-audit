@@ -18,7 +18,7 @@
 		"test:ui": "node node_modules/vitest/dist/cli.js --ui",
 		"test:run": "node node_modules/vitest/dist/cli.js run",
 		"audit": "tsx src/cli.ts",
-		"prepare": "vp config"
+		"prepare": "VITE_GIT_HOOKS=0 vp config"
 	},
 	"dependencies": {
 		"better-sqlite3": "^12.10.0",

@@ -35,12 +35,6 @@ repos:
             language: system
             types: [yaml]
             exclude: "^(node_modules/|dist/|storybook-static/|\\.llm/|\\.claude/|pnpm-lock\\.yaml)"
-          - id: vp-staged
-            name: vp staged
-            entry: vp staged
-            language: system
-            pass_filenames: false
-            types: [file]
           - id: markdownlint-cli2
             name: markdownlint-cli2
             entry: vp exec markdownlint-cli2
