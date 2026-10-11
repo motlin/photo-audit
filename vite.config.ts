@@ -13,9 +13,6 @@ export default defineConfig({
 		trailingComma: 'all',
 		arrowParens: 'always',
 	},
-	staged: {
-		'*': 'vp check --fix',
-	},
 	lint: {
 		plugins: [],
 		categories: {
