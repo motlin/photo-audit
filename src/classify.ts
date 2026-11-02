@@ -1,7 +1,8 @@
 import {datesAgree, type DateParts} from './dateParts.ts';
 import type {EditDerivedDate, MetadataConfidence} from './metadata.ts';
 
-export interface AuditInput {
+export interface AuditInput
+{
 	path: string;
 	/** Capture date from file metadata, or null if the file has none. */
 	metadataDate: DateParts | null;
@@ -25,7 +26,8 @@ export interface AuditInput {
 
 export type DateSource = 'filename';
 
-export interface Conflict {
+export interface Conflict
+{
 	source: DateSource;
 	found: DateParts;
 }
@@ -44,36 +46,56 @@ export interface Conflict {
  * user to judge but never propose an automatic rename.
  */
 export type Finding =
-	| {kind: 'CONSISTENT'; path: string; metadataDate: DateParts}
-	| {
+	|
+	  {
+			kind: 'CONSISTENT';
+			path: string;
+			metadataDate: DateParts;
+	  }
+	|
+	  {
 			kind: 'WRONG_DATE';
 			path: string;
 			metadataDate: DateParts;
 			metadataConfidence: MetadataConfidence;
 			conflicts: Conflict[];
 	  }
-	| {
+	|
+	  {
 			kind: 'METADATA_SUSPECT';
 			path: string;
 			metadataDate: DateParts;
 			filenameDate: DateParts | null;
 			folderDate: DateParts | null;
 	  }
-	| {
+	|
+	  {
 			kind: 'EDIT_DERIVED';
 			path: string;
 			firstEdit: DateParts;
 			lastEdit: DateParts;
 			software: string;
 	  }
-	| {kind: 'MISSING_DATE'; path: string; metadataDate: DateParts; metadataConfidence: MetadataConfidence}
-	| {kind: 'NO_METADATA_DATE'; path: string};
+	|
+	  {
+			kind: 'MISSING_DATE';
+			path: string;
+			metadataDate: DateParts;
+			metadataConfidence: MetadataConfidence;
+	  }
+	|
+	  {
+			kind: 'NO_METADATA_DATE';
+			path: string;
+	  };
 
-export function classify(input: AuditInput): Finding {
+export function classify(input: AuditInput): Finding
+{
 	const {path, metadataDate, editDerived, filenameDate, folderDate} = input;
 	const metadataConfidence: MetadataConfidence = input.metadataConfidence ?? 'high';
 
-	if (editDerived !== undefined) {
+	if (editDerived !== undefined)
+	{
 		return {
 			kind: 'EDIT_DERIVED',
 			path,
@@ -83,24 +105,56 @@ export function classify(input: AuditInput): Finding {
 		};
 	}
 
-	if (metadataDate === null) {
-		return {kind: 'NO_METADATA_DATE', path};
+	if (metadataDate === null)
+	{
+		return {
+			kind: 'NO_METADATA_DATE',
+			path,
+		};
 	}
 
 	const filenameConflict =
 		filenameDate !== null && !datesAgree(filenameDate, metadataDate)
-			? {source: 'filename' as const, found: filenameDate}
+			?
+				{
+					source: 'filename' as const,
+					found: filenameDate,
+				}
 			: null;
-	if (filenameConflict !== null) {
-		if (metadataConfidence === 'date-only' && filenameConflict.found.time !== null) {
-			return {kind: 'METADATA_SUSPECT', path, metadataDate, filenameDate, folderDate};
+	if (filenameConflict !== null)
+	{
+		if (metadataConfidence === 'date-only' && filenameConflict.found.time !== null)
+		{
+			return {
+				kind: 'METADATA_SUSPECT',
+				path,
+				metadataDate,
+				filenameDate,
+				folderDate,
+			};
 		}
-		return {kind: 'WRONG_DATE', path, metadataDate, metadataConfidence, conflicts: [filenameConflict]};
+		return {
+			kind: 'WRONG_DATE',
+			path,
+			metadataDate,
+			metadataConfidence,
+			conflicts: [filenameConflict],
+		};
 	}
 
 	const folderAgrees = folderDate !== null && datesAgree(folderDate, metadataDate);
-	if (filenameDate !== null || folderAgrees) {
-		return {kind: 'CONSISTENT', path, metadataDate};
+	if (filenameDate !== null || folderAgrees)
+	{
+		return {
+			kind: 'CONSISTENT',
+			path,
+			metadataDate,
+		};
 	}
-	return {kind: 'MISSING_DATE', path, metadataDate, metadataConfidence};
+	return {
+		kind: 'MISSING_DATE',
+		path,
+		metadataDate,
+		metadataConfidence,
+	};
 }

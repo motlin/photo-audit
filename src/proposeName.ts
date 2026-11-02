@@ -13,7 +13,8 @@ const LEADING_DATE = /^(?:\d{4}-\d{2}-\d{2}|\d{8})(?:[ _T-]+\d{2}[-:.]?\d{2}[-:.
 const CAMERA_ID_STEM =
 	/^(IMG|IMAGE|DSC|DSCF|DSCN|PXL|MVI|PICT|VID|VIDEO|CAM|DCIM|P|MOV|GOPR|GP|GH|DJI)(?:[_-]?\d+)+[_-]?[\dA-Fa-f]*$/i;
 
-export interface ProposeFilenameOptions {
+export interface ProposeFilenameOptions
+{
 	/**
 	 * When true, the original stem is dropped if it matches a known camera-
 	 * generated pattern (IMG_xxx, DSC_xxx, PXL_yyymmdd_..., etc.). Human-named
@@ -35,13 +36,15 @@ export interface ProposeFilenameOptions {
  * already leading the name is stripped first, so a wrong date is replaced
  * rather than stacked, and the extension is preserved.
  */
-export function proposeFilename(originalName: string, date: DateParts, options: ProposeFilenameOptions = {}): string {
+export function proposeFilename(originalName: string, date: DateParts, options: ProposeFilenameOptions = {}): string
+{
 	const dot = originalName.lastIndexOf('.');
 	const stem = dot > 0 ? originalName.slice(0, dot) : originalName;
 	const extension = dot > 0 ? originalName.slice(dot) : '';
 
 	let remainder = stem.replace(LEADING_DATE, '').trim();
-	if (options.stripCameraId === true && CAMERA_ID_STEM.test(remainder)) {
+	if (options.stripCameraId === true && CAMERA_ID_STEM.test(remainder))
+	{
 		remainder = '';
 	}
 	const datePrefix = formatDate(date);

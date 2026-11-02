@@ -16,35 +16,58 @@ const MINIMAL_JPEG_HEX =
 	'ffc400b5100002010303020403050504040000017d01020300041105122131410613516107227114328191a1082342b1c11552d1f02433627282090a161718191a25262728292a3435363738393a434445464748494a535455565758595a636465666768696a737475767778797a838485868788898a92939495969798999aa2a3a4a5a6a7a8a9aab2b3b4b5b6b7b8b9bac2c3c4c5c6c7c8c9cad2d3d4d5d6d7d8d9dae1e2e3e4e5e6e7e8e9eaf1f2f3f4f5f6f7f8f9fa' +
 	'ffda0008010100003f00d2cfffd9';
 
-function minimalJpegBuffer(): Buffer {
+function minimalJpegBuffer(): Buffer
+{
 	return Buffer.from(MINIMAL_JPEG_HEX, 'hex');
 }
 
-describe('auditImessageFile', () => {
+describe('auditImessageFile', () =>
+{
 	let dir = '';
 	let exiftool: ExifTool;
 	const homeZone = 'America/New_York';
 
-	beforeAll(async () => {
+	beforeAll(async () =>
+	{
 		dir = await mkdtemp(join(tmpdir(), 'photo-audit-imessage-'));
-		exiftool = new ExifTool({geolocation: true});
+		exiftool = new ExifTool(
+			{
+				geolocation: true,
+			},
+		);
 	});
 
-	afterAll(async () => {
+	afterAll(async () =>
+	{
 		await exiftool.end();
-		await rm(dir, {recursive: true, force: true});
+		await rm(
+			dir,
+			{
+				recursive: true,
+				force: true,
+			},
+		);
 	});
 
-	async function writeJpeg(name: string, tagsToWrite: Record<string, string> | null): Promise<string> {
+	async function writeJpeg(name: string, tagsToWrite: Record<string, string> | null): Promise<string>
+	{
 		const path = join(dir, name);
 		await writeFile(path, minimalJpegBuffer());
-		if (tagsToWrite !== null) {
-			await exiftool.write(path, tagsToWrite, {writeArgs: ['-overwrite_original_in_place']});
+		if (tagsToWrite !== null)
+		{
+			await exiftool.write(
+				path,
+				tagsToWrite,
+				{
+					writeArgs: ['-overwrite_original_in_place'],
+				},
+			);
 		}
 		return path;
 	}
 
-	function attachmentRow(absPath: string, opts: Partial<AttachmentRow> = {}): AttachmentRow {
+	function attachmentRow(absPath: string, opts: Partial<AttachmentRow> = {}): AttachmentRow
+	{
 		return {
 			absPath,
 			transferName: 'IMG.jpg',
@@ -60,73 +83,122 @@ describe('auditImessageFile', () => {
 		};
 	}
 
-	it('uses chat-db messageDate when EXIF has no capture date', async () => {
+	it('uses chat-db messageDate when EXIF has no capture date', async () =>
+	{
 		const path = await writeJpeg('no-exif.jpg', null);
 		// 2024-06-15 14:30:45 UTC -> 10:30:45 in America/New_York
 		const messageDate = new Date(Date.UTC(2024, 5, 15, 14, 30, 45));
-		const attachment = attachmentRow(path, {messageDate});
+		const attachment = attachmentRow(
+			path,
+			{
+				messageDate,
+			},
+		);
 
 		const result = await auditImessageFile(exiftool, attachment, homeZone);
 
 		expect(result.finding.kind).toBe('MISSING_DATE');
-		if (result.finding.kind !== 'MISSING_DATE') {
+		if (result.finding.kind !== 'MISSING_DATE')
+		{
 			throw new Error('unexpected finding kind');
 		}
 		expect(result.finding.metadataConfidence).toBe('chat-db');
-		expect(result.finding.metadataDate).toEqual({
-			year: 2024,
-			month: 6,
-			day: 15,
-			time: {hour: 10, minute: 30, second: 45},
-		});
+		expect(result.finding.metadataDate).toEqual(
+			{
+				year: 2024,
+				month: 6,
+				day: 15,
+				time:
+				{
+					hour: 10,
+					minute: 30,
+					second: 45,
+				},
+			},
+		);
 	});
 
-	it('prefers chat-db over a date-only midnight EXIF date', async () => {
-		const path = await writeJpeg('date-only.jpg', {
-			DateTimeOriginal: '2024:06:15 00:00:00',
-		});
+	it('prefers chat-db over a date-only midnight EXIF date', async () =>
+	{
+		const path = await writeJpeg(
+			'date-only.jpg',
+			{
+				DateTimeOriginal: '2024:06:15 00:00:00',
+			},
+		);
 		const messageDate = new Date(Date.UTC(2024, 5, 15, 18, 0, 0));
-		const attachment = attachmentRow(path, {messageDate});
+		const attachment = attachmentRow(
+			path,
+			{
+				messageDate,
+			},
+		);
 
 		const result = await auditImessageFile(exiftool, attachment, homeZone);
 
 		expect(result.finding.kind).toBe('MISSING_DATE');
-		if (result.finding.kind !== 'MISSING_DATE') {
+		if (result.finding.kind !== 'MISSING_DATE')
+		{
 			throw new Error('unexpected finding kind');
 		}
 		expect(result.finding.metadataConfidence).toBe('chat-db');
-		expect(result.finding.metadataDate).toEqual({
-			year: 2024,
-			month: 6,
-			day: 15,
-			time: {hour: 14, minute: 0, second: 0},
-		});
+		expect(result.finding.metadataDate).toEqual(
+			{
+				year: 2024,
+				month: 6,
+				day: 15,
+				time:
+				{
+					hour: 14,
+					minute: 0,
+					second: 0,
+				},
+			},
+		);
 	});
 
-	it('keeps a high-confidence EXIF date even when chat-db has one', async () => {
-		const path = await writeJpeg('high-conf.jpg', {
-			DateTimeOriginal: '2024:06:15 12:34:56',
-		});
+	it('keeps a high-confidence EXIF date even when chat-db has one', async () =>
+	{
+		const path = await writeJpeg(
+			'high-conf.jpg',
+			{
+				DateTimeOriginal: '2024:06:15 12:34:56',
+			},
+		);
 		// chat.db is on a different day; EXIF must still win.
 		const messageDate = new Date(Date.UTC(2025, 0, 1, 9, 0, 0));
-		const attachment = attachmentRow(path, {messageDate});
+		const attachment = attachmentRow(
+			path,
+			{
+				messageDate,
+			},
+		);
 
 		const result = await auditImessageFile(exiftool, attachment, homeZone);
 
 		expect(result.finding.kind).toBe('MISSING_DATE');
-		if (result.finding.kind !== 'MISSING_DATE') {
+		if (result.finding.kind !== 'MISSING_DATE')
+		{
 			throw new Error('unexpected finding kind');
 		}
 		expect(result.finding.metadataConfidence).toBe('high');
-		expect(result.finding.metadataDate).toEqual({
-			year: 2024,
-			month: 6,
-			day: 15,
-			time: {hour: 12, minute: 34, second: 56},
-		});
+		expect(result.finding.metadataDate).toEqual(
+			{
+				year: 2024,
+				month: 6,
+				day: 15,
+				time:
+				{
+					hour: 12,
+					minute: 34,
+					second: 56,
+				},
+			},
+		);
 	});
 
-	it('returns NO_METADATA_DATE when EXIF and chat-db both lack a date', async () => {
+	it('returns NO_METADATA_DATE when EXIF and chat-db both lack a date', async () =>
+	{
 		const path = await writeJpeg('truly-empty.jpg', null);
 		const attachment = attachmentRow(path);
 
@@ -135,23 +207,37 @@ describe('auditImessageFile', () => {
 		expect(result.finding.kind).toBe('NO_METADATA_DATE');
 	});
 
-	it('falls back to createdDate when messageDate is null', async () => {
+	it('falls back to createdDate when messageDate is null', async () =>
+	{
 		const path = await writeJpeg('created-only.jpg', null);
 		const createdDate = new Date(Date.UTC(2024, 2, 4, 17, 15, 30));
-		const attachment = attachmentRow(path, {createdDate});
+		const attachment = attachmentRow(
+			path,
+			{
+				createdDate,
+			},
+		);
 
 		const result = await auditImessageFile(exiftool, attachment, homeZone);
 
 		expect(result.finding.kind).toBe('MISSING_DATE');
-		if (result.finding.kind !== 'MISSING_DATE') {
+		if (result.finding.kind !== 'MISSING_DATE')
+		{
 			throw new Error('unexpected finding kind');
 		}
 		expect(result.finding.metadataConfidence).toBe('chat-db');
-		expect(result.finding.metadataDate).toEqual({
-			year: 2024,
-			month: 3,
-			day: 4,
-			time: {hour: 12, minute: 15, second: 30},
-		});
+		expect(result.finding.metadataDate).toEqual(
+			{
+				year: 2024,
+				month: 3,
+				day: 4,
+				time:
+				{
+					hour: 12,
+					minute: 15,
+					second: 30,
+				},
+			},
+		);
 	});
 });

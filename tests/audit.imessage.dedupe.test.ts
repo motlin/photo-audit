@@ -18,19 +18,22 @@ const MINIMAL_JPEG_HEX =
 	'ffc400b5100002010303020403050504040000017d01020300041105122131410613516107227114328191a1082342b1c11552d1f02433627282090a161718191a25262728292a3435363738393a434445464748494a535455565758595a636465666768696a737475767778797a838485868788898a92939495969798999aa2a3a4a5a6a7a8a9aab2b3b4b5b6b7b8b9bac2c3c4c5c6c7c8c9cad2d3d4d5d6d7d8d9dae1e2e3e4e5e6e7e8e9eaf1f2f3f4f5f6f7f8f9fa' +
 	'ffda0008010100003f00d2cfffd9';
 
-interface SpawnResult {
+interface SpawnResult
+{
 	code: number | null;
 	stdout: string;
 	stderr: string;
 }
 
-interface PlanEntry {
+interface PlanEntry
+{
 	from: string;
 	to: string;
 	kind: string;
 }
 
-interface AttachmentSeed {
+interface AttachmentSeed
+{
 	attachmentId: number;
 	messageId: number;
 	chatId: number;
@@ -39,11 +42,13 @@ interface AttachmentSeed {
 	path: string;
 }
 
-function minimalJpegBuffer(): Buffer {
+function minimalJpegBuffer(): Buffer
+{
 	return Buffer.from(MINIMAL_JPEG_HEX, 'hex');
 }
 
-function createChatDbSchema(db: BetterSqlite3.Database): void {
+function createChatDbSchema(db: BetterSqlite3.Database): void
+{
 	db.exec(`
 		CREATE TABLE attachment (
 			ROWID INTEGER PRIMARY KEY,
@@ -83,25 +88,43 @@ function createChatDbSchema(db: BetterSqlite3.Database): void {
 	`);
 }
 
-function runCli(args: readonly string[]): Promise<SpawnResult> {
-	return new Promise((resolvePromise, rejectPromise) => {
-		const child = spawn(TSX_BIN, [CLI_ENTRY, ...args], {stdio: ['ignore', 'pipe', 'pipe']});
+function runCli(args: readonly string[]): Promise<SpawnResult>
+{
+	return new Promise((resolvePromise, rejectPromise) =>
+	{
+		const child = spawn(
+			TSX_BIN,
+			[CLI_ENTRY, ...args],
+			{
+				stdio: ['ignore', 'pipe', 'pipe'],
+			},
+		);
 		let stdout = '';
 		let stderr = '';
-		child.stdout.on('data', (chunk: Buffer) => {
+		child.stdout.on('data', (chunk: Buffer) =>
+		{
 			stdout += chunk.toString('utf8');
 		});
-		child.stderr.on('data', (chunk: Buffer) => {
+		child.stderr.on('data', (chunk: Buffer) =>
+		{
 			stderr += chunk.toString('utf8');
 		});
 		child.once('error', rejectPromise);
-		child.once('close', (code) => {
-			resolvePromise({code, stdout, stderr});
+		child.once('close', (code) =>
+		{
+			resolvePromise(
+				{
+					code,
+					stdout,
+					stderr,
+				},
+			);
 		});
 	});
 }
 
-async function readPlan(path: string): Promise<PlanEntry[]> {
+async function readPlan(path: string): Promise<PlanEntry[]>
+{
 	const planText = await readFile(path, 'utf8');
 	return planText
 		.split('\n')
@@ -109,11 +132,14 @@ async function readPlan(path: string): Promise<PlanEntry[]> {
 		.map((line) => JSON.parse(line) as PlanEntry);
 }
 
-function insertChatDbRows(db: BetterSqlite3.Database, attachments: readonly AttachmentSeed[]): void {
+function insertChatDbRows(db: BetterSqlite3.Database, attachments: readonly AttachmentSeed[]): void
+{
 	db.prepare('INSERT INTO handle (ROWID, id) VALUES (?, ?)').run(100, 'alice@example.com');
 	const seenChats = new Set<number>();
-	for (const attachment of attachments) {
-		if (!seenChats.has(attachment.chatId)) {
+	for (const attachment of attachments)
+	{
+		if (!seenChats.has(attachment.chatId))
+		{
 			db.prepare('INSERT INTO chat (ROWID, chat_identifier, display_name) VALUES (?, ?, ?)').run(
 				attachment.chatId,
 				attachment.chatIdentifier,
@@ -142,27 +168,43 @@ function insertChatDbRows(db: BetterSqlite3.Database, attachments: readonly Atta
 	}
 }
 
-describe('cli --imessage --dedupe-imessage', () => {
+describe('cli --imessage --dedupe-imessage', () =>
+{
 	let dir = '';
 	let exiftool: ExifTool;
 
-	beforeAll(() => {
-		exiftool = new ExifTool({geolocation: true});
+	beforeAll(() =>
+	{
+		exiftool = new ExifTool(
+			{
+				geolocation: true,
+			},
+		);
 	});
 
-	beforeEach(async () => {
+	beforeEach(async () =>
+	{
 		dir = await mkdtemp(join(tmpdir(), 'photo-audit-imessage-dedupe-'));
 	});
 
-	afterEach(async () => {
-		await rm(dir, {recursive: true, force: true});
+	afterEach(async () =>
+	{
+		await rm(
+			dir,
+			{
+				recursive: true,
+				force: true,
+			},
+		);
 	});
 
-	afterAll(async () => {
+	afterAll(async () =>
+	{
 		await exiftool.end();
 	});
 
-	async function writeDuplicateCandidate(name: string, extraBytes: number): Promise<string> {
+	async function writeDuplicateCandidate(name: string, extraBytes: number): Promise<string>
+	{
 		const path = join(dir, name);
 		await writeFile(path, minimalJpegBuffer());
 		await exiftool.write(
@@ -172,7 +214,9 @@ describe('cli --imessage --dedupe-imessage', () => {
 				Make: 'Example Camera Co',
 				Model: 'ExampleCam 1',
 			},
-			{writeArgs: ['-overwrite_original_in_place']},
+			{
+				writeArgs: ['-overwrite_original_in_place'],
+			},
 		);
 		await appendFile(path, Buffer.alloc(extraBytes));
 		return path;
@@ -181,16 +225,21 @@ describe('cli --imessage --dedupe-imessage', () => {
 	async function writePlanFor(
 		attachments: readonly AttachmentSeed[],
 		extraArgs: readonly string[] = [],
-	): Promise<{
+	): Promise<
+	{
 		entries: PlanEntry[];
 		result: SpawnResult;
-	}> {
+	}>
+	{
 		const dbPath = join(dir, 'chat.db');
 		const db = new BetterSqlite3(dbPath);
-		try {
+		try
+		{
 			createChatDbSchema(db);
 			insertChatDbRows(db, attachments);
-		} finally {
+		}
+		finally
+		{
 			db.close();
 		}
 
@@ -209,10 +258,14 @@ describe('cli --imessage --dedupe-imessage', () => {
 			...extraArgs,
 		]);
 
-		return {entries: await readPlan(planPath), result};
+		return {
+			entries: await readPlan(planPath),
+			result,
+		};
 	}
 
-	it('keeps only the largest same-chat attachment with the same EXIF date and camera', async () => {
+	it('keeps only the largest same-chat attachment with the same EXIF date and camera', async () =>
+	{
 		const smallPath = await writeDuplicateCandidate('small.jpg', 10);
 		const mediumPath = await writeDuplicateCandidate('medium.jpg', 100);
 		const largestPath = await writeDuplicateCandidate('largest.jpg', 1_000);
@@ -250,7 +303,8 @@ describe('cli --imessage --dedupe-imessage', () => {
 		expect(result.stderr).toContain('bytes saved');
 	});
 
-	it('does not dedupe matching attachments across different chats', async () => {
+	it('does not dedupe matching attachments across different chats', async () =>
+	{
 		const alphaPath = await writeDuplicateCandidate('alpha.jpg', 10);
 		const betaPath = await writeDuplicateCandidate('beta.jpg', 100);
 
@@ -278,7 +332,8 @@ describe('cli --imessage --dedupe-imessage', () => {
 		expect(result.stderr).not.toContain('Deduped');
 	});
 
-	it('keeps same-chat duplicates when --no-dedupe-imessage is set', async () => {
+	it('keeps same-chat duplicates when --no-dedupe-imessage is set', async () =>
+	{
 		const smallPath = await writeDuplicateCandidate('small.jpg', 10);
 		const mediumPath = await writeDuplicateCandidate('medium.jpg', 100);
 		const largestPath = await writeDuplicateCandidate('largest.jpg', 1_000);

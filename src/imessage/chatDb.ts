@@ -33,7 +33,8 @@ import {cocoaNanosToDate, cocoaSecondsToDate} from './cocoaEpoch.ts';
 
 export type Database = BetterSqlite3.Database;
 
-export interface AttachmentRow {
+export interface AttachmentRow
+{
 	absPath: string;
 	transferName: string | null;
 	mimeType: string;
@@ -46,7 +47,8 @@ export interface AttachmentRow {
 	chatHandles: string[];
 }
 
-interface RawRow {
+interface RawRow
+{
 	filename: string;
 	transfer_name: string | null;
 	mime_type: string;
@@ -92,25 +94,36 @@ const ATTACHMENT_QUERY = `
 	GROUP BY a.ROWID
 `;
 
-export function openChatDb(path: string): Database {
+export function openChatDb(path: string): Database
+{
 	// See the file-header note: we deliberately don't use SQLite's
 	// `immutable=1` URI flag — it would silently produce corrupt reads
 	// against a live chat.db. `readonly: true` + `PRAGMA query_only = 1`
 	// is the correct mode for a database another process is writing.
-	const db = new BetterSqlite3(path, {readonly: true, fileMustExist: true});
+	const db = new BetterSqlite3(
+		path,
+		{
+			readonly: true,
+			fileMustExist: true,
+		},
+	);
 	db.pragma('query_only = 1');
 	return db;
 }
 
-function resolveHome(filename: string): string {
-	if (filename.startsWith('~/')) {
+function resolveHome(filename: string): string
+{
+	if (filename.startsWith('~/'))
+	{
 		return `${homedir()}/${filename.slice(2)}`;
 	}
 	return filename;
 }
 
-function toBool(value: bigint | number): boolean {
-	if (typeof value === 'bigint') {
+function toBool(value: bigint | number): boolean
+{
+	if (typeof value === 'bigint')
+	{
 		return value !== 0n;
 	}
 	return value !== 0;
@@ -124,23 +137,30 @@ function toBool(value: bigint | number): boolean {
  * does not, so we project it through `Intl.DateTimeFormat` to recover the
  * calendar parts in `zone`. Returns `null` when the input is `null`.
  */
-export function dateToPartsInZone(value: Date | null, zone: string): DateParts | null {
-	if (value === null) {
+export function dateToPartsInZone(value: Date | null, zone: string): DateParts | null
+{
+	if (value === null)
+	{
 		return null;
 	}
-	const formatter = new Intl.DateTimeFormat('en-US', {
-		timeZone: zone,
-		hour12: false,
-		year: 'numeric',
-		month: '2-digit',
-		day: '2-digit',
-		hour: '2-digit',
-		minute: '2-digit',
-		second: '2-digit',
-	});
+	const formatter = new Intl.DateTimeFormat(
+		'en-US',
+		{
+			timeZone: zone,
+			hour12: false,
+			year: 'numeric',
+			month: '2-digit',
+			day: '2-digit',
+			hour: '2-digit',
+			minute: '2-digit',
+			second: '2-digit',
+		},
+	);
 	const parts: Partial<Record<Intl.DateTimeFormatPartTypes, string>> = {};
-	for (const part of formatter.formatToParts(value)) {
-		if (part.type !== 'literal') {
+	for (const part of formatter.formatToParts(value))
+	{
+		if (part.type !== 'literal')
+		{
 			parts[part.type] = part.value;
 		}
 	}
@@ -152,17 +172,31 @@ export function dateToPartsInZone(value: Date | null, zone: string): DateParts |
 	const hour = Number(parts.hour) % 24;
 	const minute = Number(parts.minute);
 	const second = Number(parts.second);
-	return {year, month, day, time: {hour, minute, second}};
+	return {
+		year,
+		month,
+		day,
+		time:
+		{
+			hour,
+			minute,
+			second,
+		},
+	};
 }
 
-export function* iterAttachments(db: Database): Generator<AttachmentRow> {
+export function* iterAttachments(db: Database): Generator<AttachmentRow>
+{
 	const stmt = db.prepare<[], RawRow>(ATTACHMENT_QUERY);
-	for (const row of stmt.iterate()) {
+	for (const row of stmt.iterate())
+	{
 		const absPath = resolveHome(row.filename);
-		if (/[\x00-\x1F]/.test(absPath)) {
+		if (/[\x00-\x1F]/.test(absPath))
+		{
 			continue;
 		}
-		if (!existsSync(absPath)) {
+		if (!existsSync(absPath))
+		{
 			continue;
 		}
 		const chatHandles = row.chat_handles === null || row.chat_handles === '' ? [] : row.chat_handles.split(',');

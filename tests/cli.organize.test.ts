@@ -17,37 +17,57 @@ const MINIMAL_JPEG_HEX =
 	'ffc400b5100002010303020403050504040000017d01020300041105122131410613516107227114328191a1082342b1c11552d1f02433627282090a161718191a25262728292a3435363738393a434445464748494a535455565758595a636465666768696a737475767778797a838485868788898a92939495969798999aa2a3a4a5a6a7a8a9aab2b3b4b5b6b7b8b9bac2c3c4c5c6c7c8c9cad2d3d4d5d6d7d8d9dae1e2e3e4e5e6e7e8e9eaf1f2f3f4f5f6f7f8f9fa' +
 	'ffda0008010100003f00d2cfffd9';
 
-interface SpawnResult {
+interface SpawnResult
+{
 	code: number | null;
 	stdout: string;
 	stderr: string;
 }
 
-function runCli(args: readonly string[]): Promise<SpawnResult> {
-	return new Promise((resolvePromise, rejectPromise) => {
-		const child = spawn(TSX_BIN, [CLI_ENTRY, ...args], {stdio: ['ignore', 'pipe', 'pipe']});
+function runCli(args: readonly string[]): Promise<SpawnResult>
+{
+	return new Promise((resolvePromise, rejectPromise) =>
+	{
+		const child = spawn(
+			TSX_BIN,
+			[CLI_ENTRY, ...args],
+			{
+				stdio: ['ignore', 'pipe', 'pipe'],
+			},
+		);
 		let stdout = '';
 		let stderr = '';
-		child.stdout.on('data', (chunk: Buffer) => {
+		child.stdout.on('data', (chunk: Buffer) =>
+		{
 			stdout += chunk.toString('utf8');
 		});
-		child.stderr.on('data', (chunk: Buffer) => {
+		child.stderr.on('data', (chunk: Buffer) =>
+		{
 			stderr += chunk.toString('utf8');
 		});
 		child.once('error', rejectPromise);
-		child.once('close', (code) => {
-			resolvePromise({code, stdout, stderr});
+		child.once('close', (code) =>
+		{
+			resolvePromise(
+				{
+					code,
+					stdout,
+					stderr,
+				},
+			);
 		});
 	});
 }
 
-interface PlanEntry {
+interface PlanEntry
+{
 	from: string;
 	to: string;
 	kind: string;
 }
 
-async function readPlan(path: string): Promise<PlanEntry[]> {
+async function readPlan(path: string): Promise<PlanEntry[]>
+{
 	const raw = await readFile(path, 'utf8');
 	return raw
 		.split('\n')
@@ -55,22 +75,33 @@ async function readPlan(path: string): Promise<PlanEntry[]> {
 		.map((line) => JSON.parse(line) as PlanEntry);
 }
 
-describe('--link-all (organize a trusted export)', () => {
+describe('--link-all (organize a trusted export)', () =>
+{
 	let dir = '';
 	let sourceRoot = '';
 	let outputRoot = '';
 	let exiftool: ExifTool;
 
-	beforeEach(async () => {
+	beforeEach(async () =>
+	{
 		dir = await mkdtemp(join(tmpdir(), 'photo-audit-organize-'));
 		sourceRoot = join(dir, 'export');
 		outputRoot = join(dir, 'organized');
-		exiftool = new ExifTool({geolocation: true});
+		exiftool = new ExifTool(
+			{
+				geolocation: true,
+			},
+		);
 		// A trusted, already-dated iMazing-style export: an event folder whose
 		// name carries the date and the event, holding a camera-id-named photo
 		// whose EXIF capture date agrees with the folder.
 		const eventDir = join(sourceRoot, '2020-12-25 - Christmas Day');
-		await mkdir(eventDir, {recursive: true});
+		await mkdir(
+			eventDir,
+			{
+				recursive: true,
+			},
+		);
 		const photo = join(eventDir, 'IMG_0001.jpg');
 		await writeFile(photo, Buffer.from(MINIMAL_JPEG_HEX, 'hex'));
 		await exiftool.write(
@@ -82,16 +113,26 @@ describe('--link-all (organize a trusted export)', () => {
 				FocalLength: '4.2',
 				FocalLengthIn35mmFormat: '26',
 			},
-			{writeArgs: ['-overwrite_original_in_place']},
+			{
+				writeArgs: ['-overwrite_original_in_place'],
+			},
 		);
 	});
 
-	afterEach(async () => {
+	afterEach(async () =>
+	{
 		await exiftool.end();
-		await rm(dir, {recursive: true, force: true});
+		await rm(
+			dir,
+			{
+				recursive: true,
+				force: true,
+			},
+		);
 	});
 
-	it('links a CONSISTENT export file into the decade/year/month/event tree with a clean iMessage-style name', async () => {
+	it('links a CONSISTENT export file into the decade/year/month/event tree with a clean iMessage-style name', async () =>
+	{
 		const planPath = join(dir, 'plan.jsonl');
 		const result = await runCli([sourceRoot, '--link-all', '--output', outputRoot, '--plan', planPath]);
 		expect(result.code).toBe(0);
@@ -115,7 +156,8 @@ describe('--link-all (organize a trusted export)', () => {
 		expect(entry?.to).not.toContain('[Apple');
 	});
 
-	it('does not link a CONSISTENT file without --link-all (default audit behavior)', async () => {
+	it('does not link a CONSISTENT file without --link-all (default audit behavior)', async () =>
+	{
 		const planPath = join(dir, 'plan-default.jsonl');
 		const result = await runCli([sourceRoot, '--output', outputRoot, '--plan', planPath]);
 		expect(result.code).toBe(0);

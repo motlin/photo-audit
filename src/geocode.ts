@@ -17,7 +17,8 @@
 import {readFile, writeFile} from 'node:fs/promises';
 
 /** Rounds a coordinate to 4 decimal places (~11m precision). */
-export function roundCoord(n: number): number {
+export function roundCoord(n: number): number
+{
 	return Math.round(n * 10000) / 10000;
 }
 
@@ -25,7 +26,8 @@ export function roundCoord(n: number): number {
  * Cache key for a latitude/longitude pair, rounded to 4 decimal places so
  * nearby photos all map to the same entry.
  */
-export function coordKey(latitude: number, longitude: number): string {
+export function coordKey(latitude: number, longitude: number): string
+{
 	return `${roundCoord(latitude)},${roundCoord(longitude)}`;
 }
 
@@ -35,46 +37,58 @@ export function coordKey(latitude: number, longitude: number): string {
  * looked this coordinate up and got nothing back", which is worth remembering
  * so we don't keep retrying.
  */
-export interface LocationLabel {
+export interface LocationLabel
+{
 	city?: string;
 	region?: string;
 	country?: string;
 }
 
-export class GeocodeCache {
+export class GeocodeCache
+{
 	private readonly entries = new Map<string, LocationLabel | null>();
 
-	get(latitude: number, longitude: number): LocationLabel | null | undefined {
+	get(latitude: number, longitude: number): LocationLabel | null | undefined
+	{
 		return this.entries.get(coordKey(latitude, longitude));
 	}
 
-	has(latitude: number, longitude: number): boolean {
+	has(latitude: number, longitude: number): boolean
+	{
 		return this.entries.has(coordKey(latitude, longitude));
 	}
 
-	set(latitude: number, longitude: number, label: LocationLabel | null): void {
+	set(latitude: number, longitude: number, label: LocationLabel | null): void
+	{
 		this.entries.set(coordKey(latitude, longitude), label);
 	}
 
-	toJSON(): Record<string, LocationLabel | null> {
+	toJSON(): Record<string, LocationLabel | null>
+	{
 		const out: Record<string, LocationLabel | null> = {};
-		for (const [key, value] of this.entries) {
+		for (const [key, value] of this.entries)
+		{
 			out[key] = value;
 		}
 		return out;
 	}
 
-	static fromJSON(data: unknown): GeocodeCache {
+	static fromJSON(data: unknown): GeocodeCache
+	{
 		const cache = new GeocodeCache();
-		if (data === null || typeof data !== 'object') {
+		if (data === null || typeof data !== 'object')
+		{
 			return cache;
 		}
-		for (const [key, value] of Object.entries(data as Record<string, unknown>)) {
-			if (value === null) {
+		for (const [key, value] of Object.entries(data as Record<string, unknown>))
+		{
+			if (value === null)
+			{
 				cache.entries.set(key, null);
 				continue;
 			}
-			if (typeof value === 'object') {
+			if (typeof value === 'object')
+			{
 				cache.entries.set(key, value as LocationLabel);
 			}
 		}
@@ -87,21 +101,29 @@ export class GeocodeCache {
  * rather than an error: a corrupt cache is never fatal, the audit can rebuild
  * it on the fly.
  */
-export async function loadGeocodeCache(path: string): Promise<GeocodeCache> {
+export async function loadGeocodeCache(path: string): Promise<GeocodeCache>
+{
 	let raw: string;
-	try {
+	try
+	{
 		raw = await readFile(path, 'utf8');
-	} catch {
+	}
+	catch
+	{
 		return new GeocodeCache();
 	}
-	try {
+	try
+	{
 		return GeocodeCache.fromJSON(JSON.parse(raw));
-	} catch {
+	}
+	catch
+	{
 		return new GeocodeCache();
 	}
 }
 
-export async function saveGeocodeCache(path: string, cache: GeocodeCache): Promise<void> {
+export async function saveGeocodeCache(path: string, cache: GeocodeCache): Promise<void>
+{
 	await writeFile(path, `${JSON.stringify(cache.toJSON(), null, 2)}\n`, 'utf8');
 }
 
@@ -110,7 +132,8 @@ export async function saveGeocodeCache(path: string, cache: GeocodeCache): Promi
  * `geolocation: true`. We accept anything matching this shape so callers can
  * pass a raw `Tags` object without further narrowing.
  */
-export interface GeolocationTagSubset {
+export interface GeolocationTagSubset
+{
 	GeolocationCity?: string;
 	GeolocationRegion?: string;
 	GeolocationCountry?: string;
@@ -120,7 +143,8 @@ export interface GeolocationTagSubset {
  * Build a `city, region, country` style label out of a tag bag. Empty strings
  * are treated as missing. Returns null when every field is absent.
  */
-export function formatPlaceFromTags(tags: GeolocationTagSubset): string | null {
+export function formatPlaceFromTags(tags: GeolocationTagSubset): string | null
+{
 	const parts = [tags.GeolocationCity, tags.GeolocationRegion, tags.GeolocationCountry].filter(
 		(part): part is string => part !== undefined && part !== '',
 	);

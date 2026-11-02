@@ -1,18 +1,21 @@
 import type {DateParts} from './dateParts.ts';
 
-export interface FolderFileEntry {
+export interface FolderFileEntry
+{
 	path: string;
 	metadataDate: DateParts;
 	folderPath: string;
 }
 
-export interface DatedFolder {
+export interface DatedFolder
+{
 	folderPath: string;
 	folderDate: DateParts;
 }
 
 export type FolderWarning =
-	| {
+	|
+	  {
 			kind: 'FOLDER_AFTER_FILES';
 			folderPath: string;
 			folderDate: DateParts;
@@ -20,7 +23,8 @@ export type FolderWarning =
 			latestFile: DateParts;
 			fileCount: number;
 	  }
-	| {
+	|
+	  {
 			kind: 'FOLDER_UNIFORM_METADATA';
 			folderPath: string;
 			folderDate: DateParts;
@@ -28,15 +32,18 @@ export type FolderWarning =
 			fileCount: number;
 	  };
 
-function dayValue(date: DateParts): number {
+function dayValue(date: DateParts): number
+{
 	return date.year * 10000 + date.month * 100 + (date.day ?? 0);
 }
 
-function compareDay(a: DateParts, b: DateParts): number {
+function compareDay(a: DateParts, b: DateParts): number
+{
 	return dayValue(a) - dayValue(b);
 }
 
-function timestampsIdentical(a: DateParts, b: DateParts): boolean {
+function timestampsIdentical(a: DateParts, b: DateParts): boolean
+{
 	return (
 		a.year === b.year &&
 		a.month === b.month &&
@@ -47,17 +54,22 @@ function timestampsIdentical(a: DateParts, b: DateParts): boolean {
 	);
 }
 
-function uniformTimestamp(dates: readonly DateParts[]): DateParts | null {
-	if (dates.length < 2) {
+function uniformTimestamp(dates: readonly DateParts[]): DateParts | null
+{
+	if (dates.length < 2)
+	{
 		return null;
 	}
 	const first = dates[0];
-	if (first === undefined || first.time === null) {
+	if (first === undefined || first.time === null)
+	{
 		return null;
 	}
-	for (let i = 1; i < dates.length; i++) {
+	for (let i = 1; i < dates.length; i++)
+	{
 		const current = dates[i];
-		if (current === undefined || !timestampsIdentical(first, current)) {
+		if (current === undefined || !timestampsIdentical(first, current))
+		{
 			return null;
 		}
 	}
@@ -74,59 +86,72 @@ function uniformTimestamp(dates: readonly DateParts[]): DateParts | null {
  * label pattern, e.g. "2015-07-15 Levi's Birth/" with files from later that
  * week) are intentionally silent.
  */
-export function planFolderWarnings(
-	files: readonly FolderFileEntry[],
-	folders: readonly DatedFolder[],
-): FolderWarning[] {
+export function planFolderWarnings(files: readonly FolderFileEntry[], folders: readonly DatedFolder[]): FolderWarning[]
+{
 	const filesByFolder = new Map<string, FolderFileEntry[]>();
-	for (const entry of files) {
+	for (const entry of files)
+	{
 		const bucket = filesByFolder.get(entry.folderPath);
-		if (bucket === undefined) {
+		if (bucket === undefined)
+		{
 			filesByFolder.set(entry.folderPath, [entry]);
-		} else {
+		}
+		else
+		{
 			bucket.push(entry);
 		}
 	}
 
 	const warnings: FolderWarning[] = [];
-	for (const {folderPath, folderDate} of folders) {
+	for (const {folderPath, folderDate} of folders)
+	{
 		const members = filesByFolder.get(folderPath);
-		if (members === undefined || members.length === 0) {
+		if (members === undefined || members.length === 0)
+		{
 			continue;
 		}
 		const dates = members.map((m) => m.metadataDate);
 
 		const shared = uniformTimestamp(dates);
-		if (shared !== null) {
-			warnings.push({
-				kind: 'FOLDER_UNIFORM_METADATA',
-				folderPath,
-				folderDate,
-				sharedTimestamp: shared,
-				fileCount: members.length,
-			});
+		if (shared !== null)
+		{
+			warnings.push(
+				{
+					kind: 'FOLDER_UNIFORM_METADATA',
+					folderPath,
+					folderDate,
+					sharedTimestamp: shared,
+					fileCount: members.length,
+				},
+			);
 			continue;
 		}
 
 		let earliest = dates[0];
 		let latest = dates[0];
-		for (const date of dates) {
-			if (earliest === undefined || compareDay(date, earliest) < 0) {
+		for (const date of dates)
+		{
+			if (earliest === undefined || compareDay(date, earliest) < 0)
+			{
 				earliest = date;
 			}
-			if (latest === undefined || compareDay(date, latest) > 0) {
+			if (latest === undefined || compareDay(date, latest) > 0)
+			{
 				latest = date;
 			}
 		}
-		if (earliest !== undefined && latest !== undefined && compareDay(folderDate, latest) > 0) {
-			warnings.push({
-				kind: 'FOLDER_AFTER_FILES',
-				folderPath,
-				folderDate,
-				earliestFile: earliest,
-				latestFile: latest,
-				fileCount: members.length,
-			});
+		if (earliest !== undefined && latest !== undefined && compareDay(folderDate, latest) > 0)
+		{
+			warnings.push(
+				{
+					kind: 'FOLDER_AFTER_FILES',
+					folderPath,
+					folderDate,
+					earliestFile: earliest,
+					latestFile: latest,
+					fileCount: members.length,
+				},
+			);
 		}
 	}
 	return warnings;

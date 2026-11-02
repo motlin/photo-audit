@@ -10,11 +10,13 @@ const TSX_BIN = resolve(import.meta.dirname, '..', 'node_modules', '.bin', 'tsx'
 
 const COCOA_EPOCH_UNIX_OFFSET_SECONDS = 978307200n;
 
-function unixSecondsToCocoaSeconds(unix: bigint): bigint {
+function unixSecondsToCocoaSeconds(unix: bigint): bigint
+{
 	return unix - COCOA_EPOCH_UNIX_OFFSET_SECONDS;
 }
 
-function unixSecondsToCocoaNanos(unix: bigint): bigint {
+function unixSecondsToCocoaNanos(unix: bigint): bigint
+{
 	return (unix - COCOA_EPOCH_UNIX_OFFSET_SECONDS) * 1_000_000_000n;
 }
 
@@ -27,11 +29,13 @@ const MINIMAL_JPEG_HEX =
 	'ffc400b5100002010303020403050504040000017d01020300041105122131410613516107227114328191a1082342b1c11552d1f02433627282090a161718191a25262728292a3435363738393a434445464748494a535455565758595a636465666768696a737475767778797a838485868788898a92939495969798999aa2a3a4a5a6a7a8a9aab2b3b4b5b6b7b8b9bac2c3c4c5c6c7c8c9cad2d3d4d5d6d7d8d9dae1e2e3e4e5e6e7e8e9eaf1f2f3f4f5f6f7f8f9fa' +
 	'ffda0008010100003f00d2cfffd9';
 
-function minimalJpegBuffer(): Buffer {
+function minimalJpegBuffer(): Buffer
+{
 	return Buffer.from(MINIMAL_JPEG_HEX, 'hex');
 }
 
-function createChatDbSchema(db: BetterSqlite3.Database): void {
+function createChatDbSchema(db: BetterSqlite3.Database): void
+{
 	db.exec(`
 		CREATE TABLE attachment (
 			ROWID INTEGER PRIMARY KEY,
@@ -71,48 +75,77 @@ function createChatDbSchema(db: BetterSqlite3.Database): void {
 	`);
 }
 
-interface SpawnResult {
+interface SpawnResult
+{
 	code: number | null;
 	stdout: string;
 	stderr: string;
 }
 
-function runCli(args: readonly string[]): Promise<SpawnResult> {
-	return new Promise((resolvePromise, rejectPromise) => {
-		const child = spawn(TSX_BIN, [CLI_ENTRY, ...args], {stdio: ['ignore', 'pipe', 'pipe']});
+function runCli(args: readonly string[]): Promise<SpawnResult>
+{
+	return new Promise((resolvePromise, rejectPromise) =>
+	{
+		const child = spawn(
+			TSX_BIN,
+			[CLI_ENTRY, ...args],
+			{
+				stdio: ['ignore', 'pipe', 'pipe'],
+			},
+		);
 		let stdout = '';
 		let stderr = '';
-		child.stdout.on('data', (chunk: Buffer) => {
+		child.stdout.on('data', (chunk: Buffer) =>
+		{
 			stdout += chunk.toString('utf8');
 		});
-		child.stderr.on('data', (chunk: Buffer) => {
+		child.stderr.on('data', (chunk: Buffer) =>
+		{
 			stderr += chunk.toString('utf8');
 		});
 		child.once('error', rejectPromise);
-		child.once('close', (code) => {
-			resolvePromise({code, stdout, stderr});
+		child.once('close', (code) =>
+		{
+			resolvePromise(
+				{
+					code,
+					stdout,
+					stderr,
+				},
+			);
 		});
 	});
 }
 
-describe('cli --imessage', () => {
+describe('cli --imessage', () =>
+{
 	let dir = '';
 
-	beforeEach(async () => {
+	beforeEach(async () =>
+	{
 		dir = await mkdtemp(join(tmpdir(), 'photo-audit-cli-imessage-'));
 	});
 
-	afterEach(async () => {
-		await rm(dir, {recursive: true, force: true});
+	afterEach(async () =>
+	{
+		await rm(
+			dir,
+			{
+				recursive: true,
+				force: true,
+			},
+		);
 	});
 
-	it('rejects --imessage --fix without --output', async () => {
+	it('rejects --imessage --fix without --output', async () =>
+	{
 		const result = await runCli(['--imessage', '--fix', '--db', join(dir, 'nonexistent.db')]);
 		expect(result.code).not.toBe(0);
 		expect(result.stderr).toContain('--imessage --fix requires --output');
 	});
 
-	it('applies a plan with --apply --output and no positional or --imessage', async () => {
+	it('applies a plan with --apply --output and no positional or --imessage', async () =>
+	{
 		// Source file lives outside --output so apply creates a fresh hard link
 		// at the destination derived from the plan.
 		const sourcePath = join(dir, 'source.jpg');
@@ -123,7 +156,13 @@ describe('cli --imessage', () => {
 		const planPath = join(dir, 'tiny.jsonl');
 		await writeFile(
 			planPath,
-			`${JSON.stringify({from: sourcePath, to: targetPath, kind: 'MISSING_DATE'})}\n`,
+			`${JSON.stringify(
+				{
+					from: sourcePath,
+					to: targetPath,
+					kind: 'MISSING_DATE',
+				},
+			)}\n`,
 			'utf8',
 		);
 
@@ -137,7 +176,8 @@ describe('cli --imessage', () => {
 		expect(undoLog).toContain(targetPath);
 	});
 
-	it('rejects --apply without --output', async () => {
+	it('rejects --apply without --output', async () =>
+	{
 		const planPath = join(dir, 'empty.jsonl');
 		await writeFile(planPath, '', 'utf8');
 		const result = await runCli(['--apply', planPath]);
@@ -145,19 +185,22 @@ describe('cli --imessage', () => {
 		expect(result.stderr).toContain('--apply requires --output');
 	});
 
-	it('rejects --undo without --output', async () => {
+	it('rejects --undo without --output', async () =>
+	{
 		const result = await runCli(['--undo']);
 		expect(result.code).not.toBe(0);
 		expect(result.stderr).toContain('--undo requires --output');
 	});
 
-	it('writes a plan file with entries derived from chat.db when given --plan', async () => {
+	it('writes a plan file with entries derived from chat.db when given --plan', async () =>
+	{
 		const attachmentPath = join(dir, 'IMG.jpg');
 		await writeFile(attachmentPath, minimalJpegBuffer());
 
 		const dbPath = join(dir, 'chat.db');
 		const db = new BetterSqlite3(dbPath);
-		try {
+		try
+		{
 			createChatDbSchema(db);
 			db.prepare('INSERT INTO chat (ROWID, chat_identifier, display_name) VALUES (?, ?, ?)').run(
 				10,
@@ -177,7 +220,9 @@ describe('cli --imessage', () => {
 			db.prepare('INSERT INTO message_attachment_join (message_id, attachment_id) VALUES (?, ?)').run(100, 1);
 			db.prepare('INSERT INTO chat_message_join (chat_id, message_id) VALUES (?, ?)').run(10, 100);
 			db.prepare('INSERT INTO chat_handle_join (chat_id, handle_id) VALUES (?, ?)').run(10, 20);
-		} finally {
+		}
+		finally
+		{
 			db.close();
 		}
 
@@ -201,7 +246,12 @@ describe('cli --imessage', () => {
 		const planText = await readFile(planPath, 'utf8');
 		const lines = planText.split('\n').filter((line) => line.trim() !== '');
 		expect(lines).toHaveLength(1);
-		const entry = JSON.parse(lines[0] ?? '') as {from: string; to: string; kind: string};
+		const entry = JSON.parse(lines[0] ?? '') as
+		{
+			from: string;
+			to: string;
+			kind: string;
+		};
 		expect(entry.from).toBe(attachmentPath);
 		expect(entry.kind).toBe('MISSING_DATE');
 		// `2024-06-15 14:30:45 UTC` -> 10:30:45 in America/New_York. iMessage
@@ -213,7 +263,8 @@ describe('cli --imessage', () => {
 		expect(entry.to.endsWith('.jpg')).toBe(true);
 	});
 
-	it('uses iMessage filename rules with --contacts: outgoing-in-group, mapped-incoming, unmapped-incoming', async () => {
+	it('uses iMessage filename rules with --contacts: outgoing-in-group, mapped-incoming, unmapped-incoming', async () =>
+	{
 		const outgoingPath = join(dir, 'outgoing.jpg');
 		const mappedIncomingPath = join(dir, 'mapped.jpg');
 		const unmappedIncomingPath = join(dir, 'unmapped.jpg');
@@ -223,7 +274,8 @@ describe('cli --imessage', () => {
 
 		const dbPath = join(dir, 'chat.db');
 		const db = new BetterSqlite3(dbPath);
-		try {
+		try
+		{
 			createChatDbSchema(db);
 			db.prepare('INSERT INTO chat (ROWID, chat_identifier, display_name) VALUES (?, ?, ?)').run(
 				10,
@@ -276,12 +328,23 @@ describe('cli --imessage', () => {
 			// Group chat with two participants (Alice and the unmapped handle).
 			db.prepare('INSERT INTO chat_handle_join (chat_id, handle_id) VALUES (?, ?)').run(10, 20);
 			db.prepare('INSERT INTO chat_handle_join (chat_id, handle_id) VALUES (?, ?)').run(10, 21);
-		} finally {
+		}
+		finally
+		{
 			db.close();
 		}
 
 		const contactsPath = join(dir, 'contacts.json');
-		await writeFile(contactsPath, JSON.stringify({self: 'Craig', '+15550001111': 'Alice'}), 'utf8');
+		await writeFile(
+			contactsPath,
+			JSON.stringify(
+				{
+					self: 'Craig',
+					'+15550001111': 'Alice',
+				},
+			),
+			'utf8',
+		);
 
 		const planPath = join(dir, 'plan.jsonl');
 		const outputRoot = join(dir, 'output');
@@ -305,7 +368,15 @@ describe('cli --imessage', () => {
 		const planText = await readFile(planPath, 'utf8');
 		const lines = planText.split('\n').filter((line) => line.trim() !== '');
 		expect(lines).toHaveLength(3);
-		const entries = lines.map((line) => JSON.parse(line) as {from: string; to: string; kind: string});
+		const entries = lines.map(
+			(line) =>
+				JSON.parse(line) as
+				{
+					from: string;
+					to: string;
+					kind: string;
+				},
+		);
 		const byFrom = new Map(entries.map((entry) => [entry.from, entry]));
 
 		// Outgoing in group: sender is the current user (from `self`), recipient is the group title.
@@ -329,7 +400,8 @@ describe('cli --imessage', () => {
 		expect(unmappedName).toBe('2024-06-15 10.12.45 (+15559998888 → Family Trip) unmapped.jpg');
 	});
 
-	it('uses arrow form for incoming DMs and outgoing DMs', async () => {
+	it('uses arrow form for incoming DMs and outgoing DMs', async () =>
+	{
 		const incomingDmPath = join(dir, 'incoming.jpg');
 		const outgoingDmPath = join(dir, 'outgoing.jpg');
 		const orphanIncomingPath = join(dir, 'orphan.jpg');
@@ -339,7 +411,8 @@ describe('cli --imessage', () => {
 
 		const dbPath = join(dir, 'chat.db');
 		const db = new BetterSqlite3(dbPath);
-		try {
+		try
+		{
 			createChatDbSchema(db);
 			// Two DM chats — one with the mapped partner Alice and another with
 			// the same partner used for the outgoing case. display_name NULL
@@ -394,12 +467,23 @@ describe('cli --imessage', () => {
 			db.prepare('INSERT INTO chat_message_join (chat_id, message_id) VALUES (?, ?)').run(11, 101);
 			db.prepare('INSERT INTO chat_handle_join (chat_id, handle_id) VALUES (?, ?)').run(10, 20);
 			db.prepare('INSERT INTO chat_handle_join (chat_id, handle_id) VALUES (?, ?)').run(11, 20);
-		} finally {
+		}
+		finally
+		{
 			db.close();
 		}
 
 		const contactsPath = join(dir, 'contacts.json');
-		await writeFile(contactsPath, JSON.stringify({self: 'Craig', '+15550001111': 'Alice'}), 'utf8');
+		await writeFile(
+			contactsPath,
+			JSON.stringify(
+				{
+					self: 'Craig',
+					'+15550001111': 'Alice',
+				},
+			),
+			'utf8',
+		);
 
 		const planPath = join(dir, 'plan.jsonl');
 		const outputRoot = join(dir, 'output');
@@ -423,7 +507,15 @@ describe('cli --imessage', () => {
 		const planText = await readFile(planPath, 'utf8');
 		const lines = planText.split('\n').filter((line) => line.trim() !== '');
 		expect(lines).toHaveLength(3);
-		const entries = lines.map((line) => JSON.parse(line) as {from: string; to: string; kind: string});
+		const entries = lines.map(
+			(line) =>
+				JSON.parse(line) as
+				{
+					from: string;
+					to: string;
+					kind: string;
+				},
+		);
 		const byFrom = new Map(entries.map((entry) => [entry.from, entry]));
 
 		const incoming = byFrom.get(incomingDmPath);
@@ -442,7 +534,8 @@ describe('cli --imessage', () => {
 		expect(orphanIncomingName).toBe('2024-06-15 10.12.45 (Alice → Craig) orphan.jpg');
 	});
 
-	it('skips unnamed groups with >3 handles and reports them; uses contacts.chats overrides when present', async () => {
+	it('skips unnamed groups with >3 handles and reports them; uses contacts.chats overrides when present', async () =>
+	{
 		const dmPath = join(dir, 'dm.jpg');
 		const smallGroupPath = join(dir, 'smallgroup.jpg');
 		const overrideGroupPath = join(dir, 'override.jpg');
@@ -454,7 +547,8 @@ describe('cli --imessage', () => {
 
 		const dbPath = join(dir, 'chat.db');
 		const db = new BetterSqlite3(dbPath);
-		try {
+		try
+		{
 			createChatDbSchema(db);
 			// Chat 10: 1-handle DM with Alice (no display_name).
 			// Chat 11: unnamed 3-handle group (auto-derive recipient).
@@ -555,20 +649,27 @@ describe('cli --imessage', () => {
 			db.prepare('INSERT INTO chat_handle_join (chat_id, handle_id) VALUES (?, ?)').run(13, 22);
 			db.prepare('INSERT INTO chat_handle_join (chat_id, handle_id) VALUES (?, ?)').run(13, 23);
 			db.prepare('INSERT INTO chat_handle_join (chat_id, handle_id) VALUES (?, ?)').run(13, 24);
-		} finally {
+		}
+		finally
+		{
 			db.close();
 		}
 
 		const contactsPath = join(dir, 'contacts.json');
 		await writeFile(
 			contactsPath,
-			JSON.stringify({
-				self: 'Craig',
-				'+15550001111': 'Alice',
-				'+15552220001': 'Bob',
-				'+15552220002': 'Carol',
-				chats: {'chat-override': 'Override Group'},
-			}),
+			JSON.stringify(
+				{
+					self: 'Craig',
+					'+15550001111': 'Alice',
+					'+15552220001': 'Bob',
+					'+15552220002': 'Carol',
+					chats:
+					{
+						'chat-override': 'Override Group',
+					},
+				},
+			),
 			'utf8',
 		);
 
@@ -595,7 +696,15 @@ describe('cli --imessage', () => {
 		const lines = planText.split('\n').filter((line) => line.trim() !== '');
 		// Three entries: DM, small group, override group. The big unnamed group is skipped.
 		expect(lines).toHaveLength(3);
-		const entries = lines.map((line) => JSON.parse(line) as {from: string; to: string; kind: string});
+		const entries = lines.map(
+			(line) =>
+				JSON.parse(line) as
+				{
+					from: string;
+					to: string;
+					kind: string;
+				},
+		);
 		const byFrom = new Map(entries.map((entry) => [entry.from, entry]));
 
 		// DM uses Alice -> Craig.

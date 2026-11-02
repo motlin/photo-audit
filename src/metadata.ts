@@ -40,20 +40,26 @@ const DATE_TAGS = [
  * value written as "...Z") is taken at face value, and a date whose zone was
  * recovered from another tag has a non-UTC zone, so neither matches here.
  */
-function isDefaultedUtc(value: ExifDateTime): boolean {
+function isDefaultedUtc(value: ExifDateTime): boolean
+{
 	return value.zone === 'UTC' && value.inferredZone === true;
 }
 
-function partsFromExifDateTime(value: ExifDateTime): DateParts {
+function partsFromExifDateTime(value: ExifDateTime): DateParts
+{
 	return {
 		year: value.year,
 		month: value.month,
 		day: value.day,
-		time: {
+		time:
+		{
 			hour: value.hour,
 			minute: value.minute,
 			second: value.second,
-			...(value.millisecond !== undefined && {millisecond: value.millisecond}),
+			...(value.millisecond !== undefined &&
+			{
+				millisecond: value.millisecond,
+			}),
 		},
 	};
 }
@@ -65,17 +71,28 @@ function partsFromExifDateTime(value: ExifDateTime): DateParts {
  * A defaulted-UTC value is converted into `homeZone`; every other value
  * already carries the intended local wall-clock and is used unchanged.
  */
-export function toLocalDateParts(value: unknown, homeZone: string): DateParts | null {
-	if (value instanceof ExifDate) {
-		if (value.month === undefined || value.day === undefined) {
+export function toLocalDateParts(value: unknown, homeZone: string): DateParts | null
+{
+	if (value instanceof ExifDate)
+	{
+		if (value.month === undefined || value.day === undefined)
+		{
 			return null;
 		}
-		return {year: value.year, month: value.month, day: value.day, time: null};
+		return {
+			year: value.year,
+			month: value.month,
+			day: value.day,
+			time: null,
+		};
 	}
-	if (value instanceof ExifDateTime) {
-		if (isDefaultedUtc(value)) {
+	if (value instanceof ExifDateTime)
+	{
+		if (isDefaultedUtc(value))
+		{
 			const local = value.setZone(homeZone);
-			if (local !== undefined) {
+			if (local !== undefined)
+			{
 				return partsFromExifDateTime(local);
 			}
 		}
@@ -94,7 +111,8 @@ export function toLocalDateParts(value: unknown, homeZone: string): DateParts | 
  */
 export type MetadataConfidence = 'high' | 'date-only' | 'chat-db';
 
-export interface MetadataDate {
+export interface MetadataDate
+{
 	date: DateParts;
 	/** Which metadata tag the date came from. */
 	tag: string;
@@ -105,15 +123,19 @@ export interface MetadataDate {
  * True when this `ExifDateTime` looks like a date-only sentinel rather than a
  * captured wall-clock time: midnight to the second.
  */
-function isMidnightExifDateTime(value: ExifDateTime): boolean {
+function isMidnightExifDateTime(value: ExifDateTime): boolean
+{
 	return value.hour === 0 && value.minute === 0 && value.second === 0;
 }
 
-function confidenceOf(value: unknown): MetadataConfidence {
-	if (value instanceof ExifDate) {
+function confidenceOf(value: unknown): MetadataConfidence
+{
+	if (value instanceof ExifDate)
+	{
 		return 'date-only';
 	}
-	if (value instanceof ExifDateTime && isMidnightExifDateTime(value)) {
+	if (value instanceof ExifDateTime && isMidnightExifDateTime(value))
+	{
 		return 'date-only';
 	}
 	return 'high';
@@ -124,8 +146,10 @@ function confidenceOf(value: unknown): MetadataConfidence {
  * defaulted-UTC value that had to be shifted into the home zone. An explicit
  * EXIF "...Z" (zone known, `inferredZone === false`) counts as a real zone.
  */
-function hasRealZone(value: unknown): boolean {
-	if (value instanceof ExifDateTime) {
+function hasRealZone(value: unknown): boolean
+{
+	if (value instanceof ExifDateTime)
+	{
 		return !isDefaultedUtc(value);
 	}
 	return true;
@@ -135,7 +159,8 @@ function hasRealZone(value: unknown): boolean {
  * True when the candidate carries a real captured wall-clock time, not a
  * midnight or date-only sentinel.
  */
-function hasRealTime(value: unknown): boolean {
+function hasRealTime(value: unknown): boolean
+{
 	return confidenceOf(value) === 'high';
 }
 
@@ -151,39 +176,57 @@ function hasRealTime(value: unknown): boolean {
  * `CreateDate` override a midnight `DateTimeOriginal`, while still preferring
  * `SubSecDateTimeOriginal` over `DateTimeOriginal` when they are equivalent.
  */
-export function extractMetadataDate(tags: Tags, homeZone: string): MetadataDate | null {
-	type Candidate = {
+export function extractMetadataDate(tags: Tags, homeZone: string): MetadataDate | null
+{
+	type Candidate =
+	{
 		date: DateParts;
 		tag: (typeof DATE_TAGS)[number];
 		raw: unknown;
 	};
 
 	const candidates: Candidate[] = [];
-	for (const tag of DATE_TAGS) {
+	for (const tag of DATE_TAGS)
+	{
 		const raw = tags[tag];
 		const date = toLocalDateParts(raw, homeZone);
-		if (date !== null) {
-			candidates.push({date, tag, raw});
+		if (date !== null)
+		{
+			candidates.push(
+				{
+					date,
+					tag,
+					raw,
+				},
+			);
 		}
 	}
 
-	if (candidates.length === 0) {
+	if (candidates.length === 0)
+	{
 		return null;
 	}
 
 	// `candidates` is already in DATE_TAGS order, so the reduce keeps the
 	// earlier-listed tag whenever the time-then-zone scores tie.
-	const best = candidates.reduce((winner, current) => {
-		if (hasRealTime(current.raw) !== hasRealTime(winner.raw)) {
+	const best = candidates.reduce((winner, current) =>
+	{
+		if (hasRealTime(current.raw) !== hasRealTime(winner.raw))
+		{
 			return hasRealTime(current.raw) ? current : winner;
 		}
-		if (hasRealZone(current.raw) !== hasRealZone(winner.raw)) {
+		if (hasRealZone(current.raw) !== hasRealZone(winner.raw))
+		{
 			return hasRealZone(current.raw) ? current : winner;
 		}
 		return winner;
 	});
 
-	return {date: best.date, tag: best.tag, confidence: confidenceOf(best.raw)};
+	return {
+		date: best.date,
+		tag: best.tag,
+		confidence: confidenceOf(best.raw),
+	};
 }
 
 /**
@@ -191,7 +234,8 @@ export function extractMetadataDate(tags: Tags, homeZone: string): MetadataDate 
  * session (Photoshop / Lightroom / GIMP / Affinity / Topaz). The dates here
  * are NOT capture times — they are when the file was saved during editing.
  */
-export interface EditDerivedDate {
+export interface EditDerivedDate
+{
 	firstEdit: DateParts;
 	lastEdit: DateParts;
 	software: string;
@@ -202,18 +246,35 @@ export interface EditDerivedDate {
  * capture date, or it is edit-derived (no capture tags, only edit timestamps
  * stamped by recognized editing software).
  */
-export type DateOrEdit = {kind: 'capture'; metadata: MetadataDate} | ({kind: 'edit-derived'} & EditDerivedDate);
+export type DateOrEdit =
+	|
+	  {
+			kind: 'capture';
+			metadata: MetadataDate;
+	  }
+	| (
+	  {
+			kind: 'edit-derived';
+	  } & EditDerivedDate);
 
 /**
  * Pull a `When` ExifDateTime/ExifDate out of a single `ResourceEvent`-shaped
  * History entry. Returns null when the value cannot be parsed as a date.
  */
-function historyWhen(entry: unknown): ExifDateTime | ExifDate | null {
-	if (entry === null || typeof entry !== 'object') {
+function historyWhen(entry: unknown): ExifDateTime | ExifDate | null
+{
+	if (entry === null || typeof entry !== 'object')
+	{
 		return null;
 	}
-	const when = (entry as {When?: unknown}).When;
-	if (when instanceof ExifDateTime || when instanceof ExifDate) {
+	const when = (
+		entry as
+		{
+			When?: unknown;
+		}
+	).When;
+	if (when instanceof ExifDateTime || when instanceof ExifDate)
+	{
 		return when;
 	}
 	return null;
@@ -223,12 +284,16 @@ function historyWhen(entry: unknown): ExifDateTime | ExifDate | null {
  * Every `When` timestamp found in a `History` value, which may be a single
  * `ResourceEvent`, an array of them, or a string we can't parse.
  */
-function historyWhens(history: unknown): (ExifDateTime | ExifDate)[] {
-	if (Array.isArray(history)) {
+function historyWhens(history: unknown): (ExifDateTime | ExifDate)[]
+{
+	if (Array.isArray(history))
+	{
 		const result: (ExifDateTime | ExifDate)[] = [];
-		for (const entry of history) {
+		for (const entry of history)
+		{
 			const when = historyWhen(entry);
-			if (when !== null) {
+			if (when !== null)
+			{
 				result.push(when);
 			}
 		}
@@ -243,17 +308,21 @@ function historyWhens(history: unknown): (ExifDateTime | ExifDate)[] {
  * current contents, used both to recognize editing software and to attribute
  * the edit-derived label. The first non-empty value wins.
  */
-function softwareString(tags: Tags): string | null {
+function softwareString(tags: Tags): string | null
+{
 	const candidates = [tags.Software, tags.CreatorTool, tags.ProcessingSoftware];
-	for (const candidate of candidates) {
-		if (typeof candidate === 'string' && candidate.length > 0) {
+	for (const candidate of candidates)
+	{
+		if (typeof candidate === 'string' && candidate.length > 0)
+		{
 			return candidate;
 		}
 	}
 	return null;
 }
 
-function isEditingSoftware(software: string): boolean {
+function isEditingSoftware(software: string): boolean
+{
 	const lower = software.toLowerCase();
 	return EDIT_SOFTWARE_HINTS.some((hint) => lower.includes(hint));
 }
@@ -263,32 +332,49 @@ function isEditingSoftware(software: string): boolean {
  * `ModifyDate`, `MetadataDate`, and every `History[].When`. Returns null when
  * no usable edit date is present.
  */
-function editDateRange(tags: Tags, homeZone: string): {firstEdit: DateParts; lastEdit: DateParts} | null {
+function editDateRange(
+	tags: Tags,
+	homeZone: string,
+):
+{
+	firstEdit: DateParts;
+	lastEdit: DateParts;
+} | null
+{
 	const dates: DateParts[] = [];
-	for (const tag of EDIT_DATE_TAGS) {
+	for (const tag of EDIT_DATE_TAGS)
+	{
 		const parts = toLocalDateParts(tags[tag], homeZone);
-		if (parts !== null) {
+		if (parts !== null)
+		{
 			dates.push(parts);
 		}
 	}
-	for (const when of historyWhens(tags.History)) {
+	for (const when of historyWhens(tags.History))
+	{
 		const parts = toLocalDateParts(when, homeZone);
-		if (parts !== null) {
+		if (parts !== null)
+		{
 			dates.push(parts);
 		}
 	}
-	if (dates.length === 0) {
+	if (dates.length === 0)
+	{
 		return null;
 	}
 	const sorted = [...dates].sort(compareDateParts);
-	return {firstEdit: sorted[0]!, lastEdit: sorted[sorted.length - 1]!};
+	return {
+		firstEdit: sorted[0]!,
+		lastEdit: sorted[sorted.length - 1]!,
+	};
 }
 
 /**
  * Order DateParts chronologically. Treats a missing day or time component as
  * 0 so date-only and timestamped values compare consistently.
  */
-function compareDateParts(left: DateParts, right: DateParts): number {
+function compareDateParts(left: DateParts, right: DateParts): number
+{
 	const cmp = (a: number, b: number): number | null => (a === b ? null : a - b);
 	return (
 		cmp(left.year, right.year) ??
@@ -313,23 +399,36 @@ function compareDateParts(left: DateParts, right: DateParts): number {
  *    a recognized editor (Photoshop, Lightroom, GIMP, Affinity, Topaz).
  *  - `null` otherwise.
  */
-export function extractDateOrEdit(tags: Tags, homeZone: string): DateOrEdit | null {
+export function extractDateOrEdit(tags: Tags, homeZone: string): DateOrEdit | null
+{
 	const capture = extractMetadataDate(tags, homeZone);
-	if (capture !== null) {
-		return {kind: 'capture', metadata: capture};
+	if (capture !== null)
+	{
+		return {
+			kind: 'capture',
+			metadata: capture,
+		};
 	}
 	const software = softwareString(tags);
-	if (software === null || !isEditingSoftware(software)) {
+	if (software === null || !isEditingSoftware(software))
+	{
 		return null;
 	}
 	const range = editDateRange(tags, homeZone);
-	if (range === null) {
+	if (range === null)
+	{
 		return null;
 	}
-	return {kind: 'edit-derived', firstEdit: range.firstEdit, lastEdit: range.lastEdit, software};
+	return {
+		kind: 'edit-derived',
+		firstEdit: range.firstEdit,
+		lastEdit: range.lastEdit,
+		software,
+	};
 }
 
-export interface CameraInfo {
+export interface CameraInfo
+{
 	make: string | null;
 	model: string | null;
 	lensModel: string | null;
@@ -343,27 +442,33 @@ export interface CameraInfo {
 	focalLength: number | null;
 }
 
-function datePartsKey(value: unknown, homeZone: string): string | null {
+function datePartsKey(value: unknown, homeZone: string): string | null
+{
 	const parts = toLocalDateParts(value, homeZone);
 	return parts === null ? null : formatDate(parts);
 }
 
-export function extractImessageDedupeKey(tags: Tags, mimeType: string, homeZone: string): string | null {
+export function extractImessageDedupeKey(tags: Tags, mimeType: string, homeZone: string): string | null
+{
 	const make = trimOrNull(tags.Make);
 	const model = trimOrNull(tags.Model);
-	if (make === null || model === null) {
+	if (make === null || model === null)
+	{
 		return null;
 	}
 	const rawDate = mimeType.startsWith('video/') ? (tags.CreationDate ?? tags.CreateDate) : tags.DateTimeOriginal;
 	const dateKey = datePartsKey(rawDate, homeZone);
-	if (dateKey === null) {
+	if (dateKey === null)
+	{
 		return null;
 	}
 	return `${dateKey}\u0000${make}\u0000${model}`;
 }
 
-function trimOrNull(value: unknown): string | null {
-	if (typeof value !== 'string') {
+function trimOrNull(value: unknown): string | null
+{
+	if (typeof value !== 'string')
+	{
 		return null;
 	}
 	const trimmed = value.trim();
@@ -375,15 +480,20 @@ function trimOrNull(value: unknown): string | null {
  * which can arrive as a bare number or as a string like `"24 mm"` / `"15.7 mm"`.
  * Returns the raw decimal value; callers that want an integer round themselves.
  */
-function parseFocalLengthMm(value: unknown): number | null {
-	if (typeof value === 'number' && Number.isFinite(value)) {
+function parseFocalLengthMm(value: unknown): number | null
+{
+	if (typeof value === 'number' && Number.isFinite(value))
+	{
 		return value;
 	}
-	if (typeof value === 'string') {
+	if (typeof value === 'string')
+	{
 		const match = /^\s*(-?\d+(?:\.\d+)?)/.exec(value);
-		if (match !== null) {
+		if (match !== null)
+		{
 			const parsed = Number(match[1]);
-			if (Number.isFinite(parsed)) {
+			if (Number.isFinite(parsed))
+			{
 				return parsed;
 			}
 		}
@@ -396,7 +506,8 @@ function parseFocalLengthMm(value: unknown): number | null {
  * length. The 35mm equivalent is conventionally displayed as an integer ("24
  * mm", "50 mm"), so the parsed value is rounded.
  */
-function parseFocalLength(value: unknown): number | null {
+function parseFocalLength(value: unknown): number | null
+{
 	const raw = parseFocalLengthMm(value);
 	return raw === null ? null : Math.round(raw);
 }
@@ -408,11 +519,13 @@ function parseFocalLength(value: unknown): number | null {
  * rounded — the iPhone lens classifier depends on whether the value is just
  * under or just over the 7mm threshold between the wide and tele groupings.
  */
-function parsePhysicalFocalLength(value: unknown): number | null {
+function parsePhysicalFocalLength(value: unknown): number | null
+{
 	return parseFocalLengthMm(value);
 }
 
-export function extractCameraInfo(tags: Tags): CameraInfo {
+export function extractCameraInfo(tags: Tags): CameraInfo
+{
 	return {
 		make: trimOrNull(tags.Make),
 		model: trimOrNull(tags.Model),
@@ -429,19 +542,23 @@ export function extractCameraInfo(tags: Tags): CameraInfo {
  * "Canon EOS 5D"), and strips noisy " CORPORATION" / " INC" / " INC." suffixes
  * from the Make.
  */
-export function formatCameraSuffix(info: CameraInfo): string | null {
+export function formatCameraSuffix(info: CameraInfo): string | null
+{
 	const cleanedMake =
 		info.make === null ? null : info.make.replace(/\s+(CORPORATION|INC\.?|CO\.?,? LTD\.?)$/i, '').trim();
-	if (cleanedMake === null || cleanedMake === '') {
+	if (cleanedMake === null || cleanedMake === '')
+	{
 		return info.model;
 	}
-	if (info.model === null) {
+	if (info.model === null)
+	{
 		return cleanedMake;
 	}
 	if (
 		info.model.toLowerCase().startsWith(`${cleanedMake.toLowerCase()} `) ||
 		info.model.toLowerCase() === cleanedMake.toLowerCase()
-	) {
+	)
+	{
 		return info.model;
 	}
 	return `${cleanedMake} ${info.model}`;
@@ -454,14 +571,18 @@ export function formatCameraSuffix(info: CameraInfo): string | null {
  * `NIKON CORPORATION` should already have had `CORPORATION` stripped before
  * reaching here.
  */
-function titleCaseAllCaps(make: string): string {
+function titleCaseAllCaps(make: string): string
+{
 	return make
 		.split(/\s+/)
-		.map((token) => {
-			if (token === '') {
+		.map((token) =>
+		{
+			if (token === '')
+			{
 				return token;
 			}
-			if (/[a-z]/.test(token)) {
+			if (/[a-z]/.test(token))
+			{
 				return token;
 			}
 			return token.charAt(0) + token.slice(1).toLowerCase();
@@ -498,32 +619,42 @@ function iphoneLensLabel(
 	lensModel: string | null,
 	focalLength: number | null,
 	focalLength35mm: number | null,
-): string | null {
-	if (lensModel !== null && /\bfront\b/i.test(lensModel)) {
+): string | null
+{
+	if (lensModel !== null && /\bfront\b/i.test(lensModel))
+	{
 		return 'front';
 	}
-	if (focalLength === null) {
+	if (focalLength === null)
+	{
 		return null;
 	}
-	if (focalLength <= 3) {
+	if (focalLength <= 3)
+	{
 		return '0.5x';
 	}
-	if (focalLength > 12) {
+	if (focalLength > 12)
+	{
 		return '5x';
 	}
-	if (focalLength >= 7 && focalLength <= 12) {
+	if (focalLength >= 7 && focalLength <= 12)
+	{
 		return '3x';
 	}
-	if (focalLength35mm === null) {
+	if (focalLength35mm === null)
+	{
 		return null;
 	}
-	if (focalLength35mm >= 22 && focalLength35mm <= 32) {
+	if (focalLength35mm >= 22 && focalLength35mm <= 32)
+	{
 		return '1x';
 	}
-	if (focalLength35mm >= 45 && focalLength35mm <= 60) {
+	if (focalLength35mm >= 45 && focalLength35mm <= 60)
+	{
 		return '2x';
 	}
-	if (focalLength35mm > 60 && focalLength35mm < 80) {
+	if (focalLength35mm > 60 && focalLength35mm < 80)
+	{
 		return '3x';
 	}
 	return `${focalLength35mm}mm`;
@@ -536,7 +667,8 @@ function iphoneLensLabel(
  *  - collapse internal whitespace
  *  - remove the space between the focal length number and `mm`
  */
-function simplifyLensModel(lensModel: string): string {
+function simplifyLensModel(lensModel: string): string
+{
 	return lensModel
 		.replace(/(\d+)\.0(?=\s*mm\b)/g, '$1')
 		.replace(/(\d+(?:\.\d+)?)\s*mm\b/g, '$1mm')
@@ -549,7 +681,8 @@ function simplifyLensModel(lensModel: string): string {
  * Strip the noisy `CORPORATION` / `INC` / `CO., LTD` company-suffix from a
  * Make string, mirroring {@link formatCameraSuffix}'s behavior.
  */
-function cleanMake(make: string): string {
+function cleanMake(make: string): string
+{
 	return make.replace(/\s+(CORPORATION|INC\.?|CO\.?,? LTD\.?)$/i, '').trim();
 }
 
@@ -571,27 +704,34 @@ function cleanMake(make: string): string {
  * This is distinct from {@link formatCameraSuffix}, which keeps the older
  * `[Apple iPhone 15 Pro]` shape used by the filesystem audit code path.
  */
-export function formatImessageCameraSuffix(info: CameraInfo): string | null {
+export function formatImessageCameraSuffix(info: CameraInfo): string | null
+{
 	const isIphone = info.model !== null && info.model.toLowerCase().includes('iphone');
-	if (isIphone) {
+	if (isIphone)
+	{
 		const label = iphoneLensLabel(info.lensModel, info.focalLength, info.focalLengthIn35mmFormat);
-		if (label === null) {
+		if (label === null)
+		{
 			return info.model;
 		}
 		return `${info.model!} ${label}`;
 	}
 
-	const base = formatCameraSuffix({
-		make: info.make === null ? null : titleCaseAllCaps(cleanMake(info.make)),
-		model: info.model,
-		lensModel: null,
-		focalLengthIn35mmFormat: null,
-		focalLength: null,
-	});
-	if (base === null) {
+	const base = formatCameraSuffix(
+		{
+			make: info.make === null ? null : titleCaseAllCaps(cleanMake(info.make)),
+			model: info.model,
+			lensModel: null,
+			focalLengthIn35mmFormat: null,
+			focalLength: null,
+		},
+	);
+	if (base === null)
+	{
 		return null;
 	}
-	if (info.lensModel === null) {
+	if (info.lensModel === null)
+	{
 		return base;
 	}
 	return `${base}, ${simplifyLensModel(info.lensModel)}`;

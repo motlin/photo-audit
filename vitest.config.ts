@@ -3,10 +3,13 @@ import viteConfig from './vite.config';
 
 export default mergeConfig(
 	viteConfig,
-	defineConfig({
-		test: {
-			globals: true,
-			environment: 'node',
+	defineConfig(
+		{
+			test:
+			{
+				globals: true,
+				environment: 'node',
+			},
 		},
-	}),
+	),
 );

@@ -12,7 +12,8 @@ import type {Finding} from './classify.ts';
 import {formatDate} from './dateParts.ts';
 import {type ProposedRename} from './fix.ts';
 import {iterAttachments, openChatDb} from './imessage/chatDb.ts';
-import {
+import
+{
 	type ChatOverridesMap,
 	type ContactsMap,
 	type LoadedContacts,
@@ -108,51 +109,88 @@ metadata against the date in its filename. Folder dates are informational only
 
 const UNDO_LOG_NAME = 'photo-audit-renames.log';
 
-function printLocation(location: string | null): void {
-	if (location !== null) {
+function printLocation(location: string | null): void
+{
+	if (location !== null)
+	{
 		console.log(`  location  : ${location}`);
 	}
 }
 
 function printWrongDate(
-	finding: Extract<Finding, {kind: 'WRONG_DATE'}>,
+	finding: Extract<
+		Finding,
+		{
+			kind: 'WRONG_DATE';
+		}
+	>,
 	root: string,
 	location: string | null,
 	cameraInfo: CameraInfo,
 	stripCameraId: boolean,
-): void {
+): void
+{
 	const name = basename(finding.path);
 	console.log(`\nWRONG DATE  ${relative(root, finding.path)}`);
 	console.log(`  metadata  : ${formatDate(finding.metadataDate)}`);
-	for (const conflict of finding.conflicts) {
+	for (const conflict of finding.conflicts)
+	{
 		console.log(`  ${conflict.source.padEnd(10)}: ${formatDate(conflict.found)}  <- disagrees`);
 	}
 	printLocation(location);
 	const cameraSuffix = formatCameraSuffix(cameraInfo);
-	console.log(`  rename to : ${proposeFilename(name, finding.metadataDate, {stripCameraId, cameraSuffix})}`);
+	console.log(
+		`  rename to : ${proposeFilename(
+			name,
+			finding.metadataDate,
+			{
+				stripCameraId,
+				cameraSuffix,
+			},
+		)}`,
+	);
 }
 
 function printMissingDate(
-	finding: Extract<Finding, {kind: 'MISSING_DATE'}>,
+	finding: Extract<
+		Finding,
+		{
+			kind: 'MISSING_DATE';
+		}
+	>,
 	root: string,
 	location: string | null,
 	cameraInfo: CameraInfo,
 	stripCameraId: boolean,
-): void {
+): void
+{
 	console.log(`\nMISSING DATE  ${relative(root, finding.path)}`);
 	console.log(`  computed  : ${formatDate(finding.metadataDate)}`);
 	printLocation(location);
 	const cameraSuffix = formatCameraSuffix(cameraInfo);
 	console.log(
-		`  rename to : ${proposeFilename(basename(finding.path), finding.metadataDate, {stripCameraId, cameraSuffix})}`,
+		`  rename to : ${proposeFilename(
+			basename(finding.path),
+			finding.metadataDate,
+			{
+				stripCameraId,
+				cameraSuffix,
+			},
+		)}`,
 	);
 }
 
 function printMetadataSuspect(
-	finding: Extract<Finding, {kind: 'METADATA_SUSPECT'}>,
+	finding: Extract<
+		Finding,
+		{
+			kind: 'METADATA_SUSPECT';
+		}
+	>,
 	root: string,
 	location: string | null,
-): void {
+): void
+{
 	console.log(`\nMETADATA SUSPECT  ${relative(root, finding.path)}`);
 	console.log(`  metadata  : ${formatDate(finding.metadataDate)}  <- date-only / low-confidence`);
 	console.log(`  filename  : ${finding.filenameDate === null ? '-' : formatDate(finding.filenameDate)}`);
@@ -161,10 +199,16 @@ function printMetadataSuspect(
 }
 
 function printEditDerived(
-	finding: Extract<Finding, {kind: 'EDIT_DERIVED'}>,
+	finding: Extract<
+		Finding,
+		{
+			kind: 'EDIT_DERIVED';
+		}
+	>,
 	root: string,
 	location: string | null,
-): void {
+): void
+{
 	console.log(`\nEDIT DERIVED  ${relative(root, finding.path)}`);
 	console.log(`  no capture date available`);
 	console.log(`  software  : ${finding.software}`);
@@ -172,13 +216,17 @@ function printEditDerived(
 	printLocation(location);
 }
 
-function printFolderWarning(warning: FolderWarning, root: string): void {
-	if (warning.kind === 'FOLDER_UNIFORM_METADATA') {
+function printFolderWarning(warning: FolderWarning, root: string): void
+{
+	if (warning.kind === 'FOLDER_UNIFORM_METADATA')
+	{
 		console.log(`\nFOLDER UNIFORM METADATA  ${relative(root, warning.folderPath)}`);
 		console.log(`  folder    : ${formatDate(warning.folderDate)}`);
 		console.log(`  all ${warning.fileCount} files share metadata: ${formatDate(warning.sharedTimestamp)}`);
 		console.log(`  metadata is likely a file-mtime fallback rather than a real capture date`);
-	} else {
+	}
+	else
+	{
 		console.log(`\nFOLDER AFTER FILES  ${relative(root, warning.folderPath)}`);
 		console.log(`  folder    : ${formatDate(warning.folderDate)}  <- after every file`);
 		console.log(
@@ -187,13 +235,20 @@ function printFolderWarning(warning: FolderWarning, root: string): void {
 	}
 }
 
-type Fixable = Extract<Finding, {kind: 'WRONG_DATE' | 'MISSING_DATE' | 'CONSISTENT'}>;
-interface FixableEntry {
+type Fixable = Extract<
+	Finding,
+	{
+		kind: 'WRONG_DATE' | 'MISSING_DATE' | 'CONSISTENT';
+	}
+>;
+interface FixableEntry
+{
 	finding: Fixable;
 	cameraInfo: CameraInfo;
 	location: string | null;
 	sourceFolderName: string | null;
-	imessage?: {
+	imessage?:
+	{
 		senderName: string | null;
 		recipient: string | null;
 		chatIdentifier: string | null;
@@ -201,7 +256,8 @@ interface FixableEntry {
 	};
 }
 
-interface NeedsNamingEntry {
+interface NeedsNamingEntry
+{
 	chatIdentifier: string;
 	handleCount: number;
 	attachmentCount: number;
@@ -211,8 +267,16 @@ interface NeedsNamingEntry {
 }
 
 type ResolvedImessageEntry =
-	| {kind: 'resolved'; senderName: string | null; recipient: string | null}
-	| {kind: 'skip-unnamed-group'};
+	|
+	  {
+			kind: 'resolved';
+			senderName: string | null;
+			recipient: string | null;
+	  }
+	|
+	  {
+			kind: 'skip-unnamed-group';
+	  };
 
 /**
  * Resolve the (senderName, recipient) pair for a single iMessage attachment.
@@ -227,7 +291,8 @@ type ResolvedImessageEntry =
  *   - chat has >3 handles                         -> SKIP this attachment
  */
 function resolveImessageEntry(
-	imessage: {
+	imessage:
+	{
 		isFromMe: boolean;
 		handleId: string | null;
 		chatDisplayName: string | null;
@@ -236,56 +301,90 @@ function resolveImessageEntry(
 	},
 	contacts: ContactsMap,
 	chats: ChatOverridesMap,
-): ResolvedImessageEntry {
+): ResolvedImessageEntry
+{
 	const selfName = getSelfName(contacts);
 	const senderName = imessage.isFromMe ? selfName : resolveContact(imessage.handleId, contacts);
 	const groupTitle =
 		imessage.chatDisplayName !== null && imessage.chatDisplayName !== '' ? imessage.chatDisplayName : null;
-	if (groupTitle !== null) {
-		return {kind: 'resolved', senderName, recipient: groupTitle};
+	if (groupTitle !== null)
+	{
+		return {
+			kind: 'resolved',
+			senderName,
+			recipient: groupTitle,
+		};
 	}
 	const chatOverride = getChatOverride(imessage.chatIdentifier, chats);
-	if (chatOverride !== null) {
-		return {kind: 'resolved', senderName, recipient: chatOverride};
+	if (chatOverride !== null)
+	{
+		return {
+			kind: 'resolved',
+			senderName,
+			recipient: chatOverride,
+		};
 	}
 	const handles = imessage.chatHandles;
-	if (handles.length === 0 && imessage.handleId !== null && !imessage.isFromMe) {
-		return {kind: 'resolved', senderName, recipient: selfName};
+	if (handles.length === 0 && imessage.handleId !== null && !imessage.isFromMe)
+	{
+		return {
+			kind: 'resolved',
+			senderName,
+			recipient: selfName,
+		};
 	}
-	if (handles.length === 1) {
+	if (handles.length === 1)
+	{
 		const lone = handles[0] ?? null;
 		const recipient = imessage.isFromMe ? resolveContact(lone, contacts) : selfName;
-		return {kind: 'resolved', senderName, recipient};
+		return {
+			kind: 'resolved',
+			senderName,
+			recipient,
+		};
 	}
-	if (handles.length === 2 || handles.length === 3) {
+	if (handles.length === 2 || handles.length === 3)
+	{
 		const normalizedSender = imessage.isFromMe ? null : normalizeHandle(imessage.handleId ?? '');
 		const others = handles.filter((handle) => normalizeHandle(handle) !== normalizedSender);
 		const resolvedOthers = others.map((handle) => resolveContact(handle, contacts) ?? handle);
 		const parts: string[] = [...resolvedOthers];
-		if (!imessage.isFromMe && selfName !== null) {
+		if (!imessage.isFromMe && selfName !== null)
+		{
 			parts.push(selfName);
 		}
 		const recipient = parts.length === 0 ? null : parts.join(', ');
-		return {kind: 'resolved', senderName, recipient};
+		return {
+			kind: 'resolved',
+			senderName,
+			recipient,
+		};
 	}
-	return {kind: 'skip-unnamed-group'};
+	return {
+		kind: 'skip-unnamed-group',
+	};
 }
 
-function formatReportDate(date: Date | null): string {
-	if (date === null) {
+function formatReportDate(date: Date | null): string
+{
+	if (date === null)
+	{
 		return '-';
 	}
 	return date.toISOString().slice(0, 10);
 }
 
-function printNeedsNamingReport(entries: ReadonlyMap<string, NeedsNamingEntry>): void {
-	if (entries.size === 0) {
+function printNeedsNamingReport(entries: ReadonlyMap<string, NeedsNamingEntry>): void
+{
+	if (entries.size === 0)
+	{
 		return;
 	}
 	process.stderr.write(
 		`\n${entries.size} unnamed group chats (>3 participants) were skipped — set a display_name in iMessage OR add a chats override in contacts.json, then re-run:\n`,
 	);
-	for (const entry of entries.values()) {
+	for (const entry of entries.values())
+	{
 		const participants = entry.resolvedParticipants.length === 0 ? '-' : entry.resolvedParticipants.join(', ');
 		process.stderr.write(
 			`  ${entry.chatIdentifier}  attachments=${entry.attachmentCount}  handles=${entry.handleCount}  ${formatReportDate(entry.earliestMessageDate)}..${formatReportDate(entry.latestMessageDate)}  participants: ${participants}\n`,
@@ -293,7 +392,8 @@ function printNeedsNamingReport(entries: ReadonlyMap<string, NeedsNamingEntry>):
 	}
 }
 
-interface PlanOptions {
+interface PlanOptions
+{
 	stripCameraId: boolean;
 	outputRoot: string | null;
 	/**
@@ -304,46 +404,81 @@ interface PlanOptions {
 	linkAll: boolean;
 }
 
-interface DedupeResult {
+interface DedupeResult
+{
 	entries: FixableEntry[];
 	droppedCount: number;
 	savedBytes: number;
 }
 
-function dedupeImessageEntries(entries: readonly FixableEntry[], enabled: boolean): DedupeResult {
-	if (!enabled) {
-		return {entries: [...entries], droppedCount: 0, savedBytes: 0};
+function dedupeImessageEntries(entries: readonly FixableEntry[], enabled: boolean): DedupeResult
+{
+	if (!enabled)
+	{
+		return {
+			entries: [...entries],
+			droppedCount: 0,
+			savedBytes: 0,
+		};
 	}
-	const kept = new Map<string, {entry: FixableEntry; size: number}>();
+	const kept = new Map<
+		string,
+		{
+			entry: FixableEntry;
+			size: number;
+		}
+	>();
 	const dropped = new Set<FixableEntry>();
 	let droppedCount = 0;
 	let savedBytes = 0;
 
-	for (const entry of entries) {
+	for (const entry of entries)
+	{
 		const imessage = entry.imessage;
-		if (imessage === undefined || imessage.chatIdentifier === null || imessage.dedupeKey === null) {
+		if (imessage === undefined || imessage.chatIdentifier === null || imessage.dedupeKey === null)
+		{
 			continue;
 		}
 		const key = `${imessage.chatIdentifier}\u0000${imessage.dedupeKey}`;
 		const size = statSync(entry.finding.path).size;
 		const existing = kept.get(key);
-		if (existing === undefined) {
-			kept.set(key, {entry, size});
+		if (existing === undefined)
+		{
+			kept.set(
+				key,
+				{
+					entry,
+					size,
+				},
+			);
 			continue;
 		}
-		if (size > existing.size) {
+		if (size > existing.size)
+		{
 			dropped.add(existing.entry);
 			droppedCount += 1;
 			savedBytes += existing.size;
-			kept.set(key, {entry, size});
-		} else {
+			kept.set(
+				key,
+				{
+					entry,
+					size,
+				},
+			);
+		}
+		else
+		{
 			dropped.add(entry);
 			droppedCount += 1;
 			savedBytes += size;
 		}
 	}
 
-	return {entries: entries.filter((entry) => !dropped.has(entry)), droppedCount, savedBytes};
+	return {
+		entries: entries.filter((entry) => !dropped.has(entry)),
+		droppedCount,
+		savedBytes,
+	};
 }
 
 /**
@@ -352,53 +487,77 @@ function dedupeImessageEntries(entries: readonly FixableEntry[], enabled: boolea
  * held back. When `outputRoot` is set, targets are placed under a new
  * decade/year/month/day hierarchy instead of next to the originals.
  */
-function planLinksFromFindings(entries: readonly FixableEntry[], root: string, options: PlanOptions): PlanEntry[] {
+function planLinksFromFindings(entries: readonly FixableEntry[], root: string, options: PlanOptions): PlanEntry[]
+{
 	const plan: PlanEntry[] = [];
-	for (const {finding, cameraInfo, location, sourceFolderName, imessage} of entries) {
+	for (const {finding, cameraInfo, location, sourceFolderName, imessage} of entries)
+	{
 		// CONSISTENT findings carry no metadataConfidence; the `in` guard keeps the
 		// access type-safe now that CONSISTENT can reach this loop in link-all mode.
-		if ('metadataConfidence' in finding && finding.metadataConfidence === 'date-only') {
+		if ('metadataConfidence' in finding && finding.metadataConfidence === 'date-only')
+		{
 			console.log(`SKIPPED (metadata is date-only): ${relative(root, finding.path)}`);
 			continue;
 		}
 		let proposed: string;
-		if (imessage !== undefined) {
-			proposed = proposeImessageFilename({
-				originalName: basename(finding.path),
-				date: finding.metadataDate,
-				senderName: imessage.senderName,
-				recipient: imessage.recipient,
-				cameraSuffix: formatImessageCameraSuffix(cameraInfo),
-			});
-		} else if (options.linkAll) {
+		if (imessage !== undefined)
+		{
+			proposed = proposeImessageFilename(
+				{
+					originalName: basename(finding.path),
+					date: finding.metadataDate,
+					senderName: imessage.senderName,
+					recipient: imessage.recipient,
+					cameraSuffix: formatImessageCameraSuffix(cameraInfo),
+				},
+			);
+		}
+		else if (options.linkAll)
+		{
 			// proposeImessageFilename doubles as the shared clean-name composer:
 			// with no sender/recipient it emits `<date+time> (camera).<ext>` and
 			// strips the IMG_###### stem. The day-folder + event suffix still comes
 			// from computeOutputDirectory below.
-			proposed = proposeImessageFilename({
-				originalName: basename(finding.path),
-				date: finding.metadataDate,
-				senderName: null,
-				recipient: null,
-				cameraSuffix: formatImessageCameraSuffix(cameraInfo),
-			});
-		} else {
-			proposed = proposeFilename(basename(finding.path), finding.metadataDate, {
-				stripCameraId: options.stripCameraId,
-				cameraSuffix: formatCameraSuffix(cameraInfo),
-			});
+			proposed = proposeImessageFilename(
+				{
+					originalName: basename(finding.path),
+					date: finding.metadataDate,
+					senderName: null,
+					recipient: null,
+					cameraSuffix: formatImessageCameraSuffix(cameraInfo),
+				},
+			);
+		}
+		else
+		{
+			proposed = proposeFilename(
+				basename(finding.path),
+				finding.metadataDate,
+				{
+					stripCameraId: options.stripCameraId,
+					cameraSuffix: formatCameraSuffix(cameraInfo),
+				},
+			);
 		}
 		const targetDir =
 			options.outputRoot === null
 				? dirname(finding.path)
-				: computeOutputDirectory({
-						outputRoot: options.outputRoot,
-						metadataDate: finding.metadataDate,
-						sourceFolderName,
-						place: location,
-						includeDayFolder: imessage === undefined,
-					});
-		plan.push({from: finding.path, to: join(targetDir, proposed), kind: finding.kind});
+				: computeOutputDirectory(
+						{
+							outputRoot: options.outputRoot,
+							metadataDate: finding.metadataDate,
+							sourceFolderName,
+							place: location,
+							includeDayFolder: imessage === undefined,
+						},
+					);
+		plan.push(
+			{
+				from: finding.path,
+				to: join(targetDir, proposed),
+				kind: finding.kind,
+			},
+		);
 	}
 	return plan;
 }
@@ -408,69 +567,109 @@ function planLinksFromFindings(entries: readonly FixableEntry[], root: string, o
  * the undo log at `undoLogPath`. Creates any missing parent directories of
  * `to` paths.
  */
-function sha256Sync(path: string): string {
+function sha256Sync(path: string): string
+{
 	const fd = openSync(path, 'r');
-	try {
+	try
+	{
 		const hash = createHash('sha256');
 		const buffer = Buffer.allocUnsafe(1 << 20);
 		let bytesRead = readSync(fd, buffer, 0, buffer.length, null);
-		while (bytesRead > 0) {
+		while (bytesRead > 0)
+		{
 			hash.update(buffer.subarray(0, bytesRead));
 			bytesRead = readSync(fd, buffer, 0, buffer.length, null);
 		}
 		return hash.digest('hex');
-	} finally {
+	}
+	finally
+	{
 		closeSync(fd);
 	}
 }
 
-async function applyPlan(plan: readonly PlanEntry[], undoLogPath: string, dedupeCollisions: boolean): Promise<void> {
-	let candidates: ProposedRename[] = plan.map(({from, to}) => ({from, to}));
-	if (dedupeCollisions) {
+async function applyPlan(plan: readonly PlanEntry[], undoLogPath: string, dedupeCollisions: boolean): Promise<void>
+{
+	let candidates: ProposedRename[] = plan.map(({from, to}) => (
+	{
+		from,
+		to,
+	}));
+	if (dedupeCollisions)
+	{
 		// Resolve same-name collisions by content: drop verified byte-duplicates,
 		// disambiguate genuinely distinct files (same timestamp, different photo)
 		// by restoring their source stem instead of silently dropping them.
 		const {resolved, droppedDuplicates} = resolveCollisions(candidates, (p) => statSync(p).size, sha256Sync);
-		if (droppedDuplicates.length > 0) {
+		if (droppedDuplicates.length > 0)
+		{
 			process.stderr.write(`Dropped ${droppedDuplicates.length} true byte-duplicate(s), verified by SHA-256.\n`);
 		}
 		candidates = resolved;
 	}
-	for (const {to} of candidates) {
-		await mkdir(dirname(to), {recursive: true});
+	for (const {to} of candidates)
+	{
+		await mkdir(
+			dirname(to),
+			{
+				recursive: true,
+			},
+		);
 	}
 	const outcomes = await applyLinks(candidates, undoLogPath, () => new Date().toISOString());
-	for (const outcome of outcomes) {
-		if (outcome.kind === 'linked') {
+	for (const outcome of outcomes)
+	{
+		if (outcome.kind === 'linked')
+		{
 			console.log(`LINKED ${outcome.from} -> ${outcome.to}`);
-		} else if (outcome.kind === 'skipped-collision') {
+		}
+		else if (outcome.kind === 'skipped-collision')
+		{
 			console.log(`SKIPPED (proposed-name collision): ${outcome.from} -> ${outcome.to}`);
-		} else {
+		}
+		else
+		{
 			console.log(`SKIPPED (target exists): ${outcome.from} -> ${outcome.to}`);
 		}
 	}
 }
 
-async function runUndo(root: string): Promise<void> {
+async function runUndo(root: string): Promise<void>
+{
 	const undoLogPath = join(root, UNDO_LOG_NAME);
 	const entries = await parseUndoLog(undoLogPath);
-	if (entries.length === 0) {
+	if (entries.length === 0)
+	{
 		console.log(`No undo log found at ${undoLogPath} (nothing to undo).`);
 		return;
 	}
 	console.log(`Undoing ${entries.length} entries from ${undoLogPath}`);
 	const outcomes = await applyUndo(entries);
-	const counts = {unlinked: 0, 'skipped-missing-target': 0, 'skipped-missing-original': 0, 'skipped-link-severed': 0};
-	for (const outcome of outcomes) {
+	const counts =
+	{
+		unlinked: 0,
+		'skipped-missing-target': 0,
+		'skipped-missing-original': 0,
+		'skipped-link-severed': 0,
+	};
+	for (const outcome of outcomes)
+	{
 		counts[outcome.kind] += 1;
-		if (outcome.kind === 'unlinked') {
+		if (outcome.kind === 'unlinked')
+		{
 			console.log(`UNLINKED ${outcome.to}`);
 			await removeEmptyAncestors(outcome.to, root);
-		} else if (outcome.kind === 'skipped-missing-target') {
+		}
+		else if (outcome.kind === 'skipped-missing-target')
+		{
 			console.log(`SKIPPED (alias already gone): ${outcome.to}`);
-		} else if (outcome.kind === 'skipped-missing-original') {
+		}
+		else if (outcome.kind === 'skipped-missing-original')
+		{
 			console.log(`SKIPPED (original missing, cannot verify): ${outcome.from} -> ${outcome.to}`);
-		} else {
+		}
+		else
+		{
 			console.log(`SKIPPED (link severed, alias was replaced): ${outcome.from} -> ${outcome.to}`);
 		}
 	}
@@ -482,32 +681,98 @@ async function runUndo(root: string): Promise<void> {
 	console.log(`  skipped (link severed)  ${counts['skipped-link-severed']}`);
 }
 
-async function main(): Promise<void> {
-	const {values, positionals} = parseArgs({
-		allowPositionals: true,
-		allowNegative: true,
-		options: {
-			limit: {type: 'string'},
-			'show-all': {type: 'boolean', default: false},
-			zone: {type: 'string'},
-			fix: {type: 'boolean', default: false},
-			undo: {type: 'boolean', default: false},
-			plan: {type: 'string'},
-			apply: {type: 'string'},
-			'strip-camera-id': {type: 'boolean', default: false},
-			'link-all': {type: 'boolean', default: false},
-			'dedupe-collisions': {type: 'boolean', default: false},
-			output: {type: 'string'},
-			exclude: {type: 'string', multiple: true},
-			imessage: {type: 'boolean', default: false},
-			'dedupe-imessage': {type: 'boolean'},
-			db: {type: 'string'},
-			contacts: {type: 'string'},
-			help: {type: 'boolean', short: 'h', default: false},
+async function main(): Promise<void>
+{
+	const {values, positionals} = parseArgs(
+		{
+			allowPositionals: true,
+			allowNegative: true,
+			options:
+			{
+				limit:
+				{
+					type: 'string',
+				},
+				'show-all':
+				{
+					type: 'boolean',
+					default: false,
+				},
+				zone:
+				{
+					type: 'string',
+				},
+				fix:
+				{
+					type: 'boolean',
+					default: false,
+				},
+				undo:
+				{
+					type: 'boolean',
+					default: false,
+				},
+				plan:
+				{
+					type: 'string',
+				},
+				apply:
+				{
+					type: 'string',
+				},
+				'strip-camera-id':
+				{
+					type: 'boolean',
+					default: false,
+				},
+				'link-all':
+				{
+					type: 'boolean',
+					default: false,
+				},
+				'dedupe-collisions':
+				{
+					type: 'boolean',
+					default: false,
+				},
+				output:
+				{
+					type: 'string',
+				},
+				exclude:
+				{
+					type: 'string',
+					multiple: true,
+				},
+				imessage:
+				{
+					type: 'boolean',
+					default: false,
+				},
+				'dedupe-imessage':
+				{
+					type: 'boolean',
+				},
+				db:
+				{
+					type: 'string',
+				},
+				contacts:
+				{
+					type: 'string',
+				},
+				help:
+				{
+					type: 'boolean',
+					short: 'h',
+					default: false,
+				},
+			},
 		},
-	});
+	);
 
-	if (values.help) {
+	if (values.help)
+	{
 		console.log(USAGE);
 		return;
 	}
@@ -515,7 +780,8 @@ async function main(): Promise<void> {
 	const exclusiveModes = [values.fix, values.undo, values.plan !== undefined, values.apply !== undefined].filter(
 		Boolean,
 	).length;
-	if (exclusiveModes > 1) {
+	if (exclusiveModes > 1)
+	{
 		console.error('Error: --fix, --undo, --plan, and --apply are mutually exclusive.');
 		process.exitCode = 1;
 		return;
@@ -523,19 +789,22 @@ async function main(): Promise<void> {
 
 	const target = positionals[0];
 	const isApplyOrUndo = values.undo || values.apply !== undefined;
-	if (isApplyOrUndo && values.output === undefined) {
+	if (isApplyOrUndo && values.output === undefined)
+	{
 		console.error(
 			`Error: ${values.undo ? '--undo' : '--apply'} requires --output to locate the undo log and (for --apply) the alias destination.`,
 		);
 		process.exitCode = 1;
 		return;
 	}
-	if (!isApplyOrUndo && target === undefined && !values.imessage) {
+	if (!isApplyOrUndo && target === undefined && !values.imessage)
+	{
 		console.error(USAGE);
 		process.exitCode = 1;
 		return;
 	}
-	if (!isApplyOrUndo && values.imessage && values.fix && values.output === undefined) {
+	if (!isApplyOrUndo && values.imessage && values.fix && values.output === undefined)
+	{
 		console.error(
 			'Error: --imessage --fix requires --output. Refusing to add hard-linked aliases inside ~/Library/Messages/Attachments/.',
 		);
@@ -555,24 +824,38 @@ async function main(): Promise<void> {
 	const dedupeImessage = values.imessage && values['dedupe-imessage'] !== false;
 	const loadedContacts: LoadedContacts = values.imessage
 		? loadContacts(contactsPath)
-		: {handles: new Map(), chats: new Map(), self: null};
+		:
+			{
+				handles: new Map(),
+				chats: new Map(),
+				self: null,
+			};
 	const contacts: ContactsMap = loadedContacts.handles;
 	const chatOverrides: ChatOverridesMap = loadedContacts.chats;
 
-	if (values.undo) {
+	if (values.undo)
+	{
 		await runUndo(outputRoot ?? root);
 		return;
 	}
 
-	if (values.apply !== undefined) {
+	if (values.apply !== undefined)
+	{
 		const plan = await readPlanFile(values.apply);
-		if (plan.length === 0) {
+		if (plan.length === 0)
+		{
 			console.log(`Plan ${values.apply} is empty (nothing to apply).`);
 			return;
 		}
-		await mkdir(outputRoot ?? root, {recursive: true});
+		await mkdir(
+			outputRoot ?? root,
+			{
+				recursive: true,
+			},
+		);
 		const probeSource = plan[0]?.from;
-		if (probeSource !== undefined && !(await probeHardLinkSupport(probeSource, outputRoot ?? root))) {
+		if (probeSource !== undefined && !(await probeHardLinkSupport(probeSource, outputRoot ?? root)))
+		{
 			console.error(
 				`Error: cannot create hard links from ${probeSource} into ${outputRoot ?? root}. Either the destination filesystem does not support hard links (ExFAT/FAT/SMB) or source and destination are on different filesystems (cross-device link not permitted). --fix and --apply require source and destination on the same APFS or HFS+ volume.`,
 			);
@@ -586,7 +869,8 @@ async function main(): Promise<void> {
 	const limit = values.limit === undefined ? Infinity : Number(values.limit);
 	const homeZone = values.zone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-	const counts: Record<Finding['kind'], number> = {
+	const counts: Record<Finding['kind'], number> =
+	{
 		CONSISTENT: 0,
 		WRONG_DATE: 0,
 		METADATA_SUSPECT: 0,
@@ -599,62 +883,92 @@ async function main(): Promise<void> {
 	const folderEntries: FolderFileEntry[] = [];
 	const datedFolders = new Map<string, DatedFolder>();
 	const needsNaming = new Map<string, NeedsNamingEntry>();
-	const exiftool = new ExifTool({geolocation: true});
+	const exiftool = new ExifTool(
+		{
+			geolocation: true,
+		},
+	);
 	let scanned = 0;
 
 	function accumulateNeedsNaming(
-		imessage: {
+		imessage:
+		{
 			chatIdentifier: string | null;
 			chatHandles: string[];
 		},
 		messageDate: Date | null,
-	): void {
+	): void
+	{
 		const chatId = imessage.chatIdentifier ?? '(unknown chat)';
 		const existing = needsNaming.get(chatId);
 		const resolvedParticipants = imessage.chatHandles.map((handle) => resolveContact(handle, contacts) ?? handle);
 		resolvedParticipants.sort();
-		if (existing === undefined) {
-			needsNaming.set(chatId, {
-				chatIdentifier: chatId,
-				handleCount: imessage.chatHandles.length,
-				attachmentCount: 1,
-				earliestMessageDate: messageDate,
-				latestMessageDate: messageDate,
-				resolvedParticipants,
-			});
+		if (existing === undefined)
+		{
+			needsNaming.set(
+				chatId,
+				{
+					chatIdentifier: chatId,
+					handleCount: imessage.chatHandles.length,
+					attachmentCount: 1,
+					earliestMessageDate: messageDate,
+					latestMessageDate: messageDate,
+					resolvedParticipants,
+				},
+			);
 			return;
 		}
 		existing.attachmentCount += 1;
-		if (messageDate !== null) {
-			if (existing.earliestMessageDate === null || messageDate < existing.earliestMessageDate) {
+		if (messageDate !== null)
+		{
+			if (existing.earliestMessageDate === null || messageDate < existing.earliestMessageDate)
+			{
 				existing.earliestMessageDate = messageDate;
 			}
-			if (existing.latestMessageDate === null || messageDate > existing.latestMessageDate) {
+			if (existing.latestMessageDate === null || messageDate > existing.latestMessageDate)
+			{
 				existing.latestMessageDate = messageDate;
 			}
 		}
 	}
 
-	async function* mediaItems(): AsyncGenerator<MediaItem> {
-		if (values.imessage) {
+	async function* mediaItems(): AsyncGenerator<MediaItem>
+	{
+		if (values.imessage)
+		{
 			const db = openChatDb(dbPath);
-			try {
-				for (const row of iterAttachments(db)) {
-					yield {kind: 'imessage', path: row.absPath, chat: row};
+			try
+			{
+				for (const row of iterAttachments(db))
+				{
+					yield {
+						kind: 'imessage',
+						path: row.absPath,
+						chat: row,
+					};
 				}
-			} finally {
+			}
+			finally
+			{
 				db.close();
 			}
 			return;
 		}
-		for await (const path of walkMedia(root, excludeRoots)) {
-			yield {kind: 'fs', path};
+		for await (const path of walkMedia(root, excludeRoots))
+		{
+			yield {
+				kind: 'fs',
+				path,
+			};
 		}
 	}
 
-	try {
-		for await (const item of mediaItems()) {
-			if (scanned >= limit) {
+	try
+	{
+		for await (const item of mediaItems())
+		{
+			if (scanned >= limit)
+			{
 				break;
 			}
 			const ctx = await contextFor(exiftool, item, root, homeZone);
@@ -663,14 +977,16 @@ async function main(): Promise<void> {
 			scanned += 1;
 
 			const resolved = imessage === null ? null : resolveImessageEntry(imessage, contacts, chatOverrides);
-			if (resolved !== null && resolved.kind === 'skip-unnamed-group' && imessage !== null) {
+			if (resolved !== null && resolved.kind === 'skip-unnamed-group' && imessage !== null)
+			{
 				const messageDate = item.kind === 'imessage' ? item.chat.messageDate : null;
 				accumulateNeedsNaming(imessage, messageDate);
 				continue;
 			}
 			const imessageEntry =
 				resolved !== null && resolved.kind === 'resolved'
-					? {
+					?
+						{
 							senderName: resolved.senderName,
 							recipient: resolved.recipient,
 							chatIdentifier: imessage?.chatIdentifier ?? null,
@@ -678,36 +994,65 @@ async function main(): Promise<void> {
 						}
 					: undefined;
 
-			if (finding.kind === 'WRONG_DATE') {
+			if (finding.kind === 'WRONG_DATE')
+			{
 				printWrongDate(finding, root, location, cameraInfo, values['strip-camera-id']);
-				fixableEntries.push({
-					finding,
-					cameraInfo,
-					location,
-					sourceFolderName,
-					...(imessageEntry !== undefined && {imessage: imessageEntry}),
-				});
-			} else if (finding.kind === 'METADATA_SUSPECT') {
+				fixableEntries.push(
+					{
+						finding,
+						cameraInfo,
+						location,
+						sourceFolderName,
+						...(imessageEntry !== undefined &&
+						{
+							imessage: imessageEntry,
+						}),
+					},
+				);
+			}
+			else if (finding.kind === 'METADATA_SUSPECT')
+			{
 				printMetadataSuspect(finding, root, location);
-			} else if (finding.kind === 'EDIT_DERIVED') {
+			}
+			else if (finding.kind === 'EDIT_DERIVED')
+			{
 				printEditDerived(finding, root, location);
-			} else if (finding.kind === 'MISSING_DATE') {
-				fixableEntries.push({
-					finding,
-					cameraInfo,
-					location,
-					sourceFolderName,
-					...(imessageEntry !== undefined && {imessage: imessageEntry}),
-				});
-				if (values['show-all']) {
+			}
+			else if (finding.kind === 'MISSING_DATE')
+			{
+				fixableEntries.push(
+					{
+						finding,
+						cameraInfo,
+						location,
+						sourceFolderName,
+						...(imessageEntry !== undefined &&
+						{
+							imessage: imessageEntry,
+						}),
+					},
+				);
+				if (values['show-all'])
+				{
 					printMissingDate(finding, root, location, cameraInfo, values['strip-camera-id']);
 				}
-			} else if (finding.kind === 'CONSISTENT' && values['link-all']) {
+			}
+			else if (finding.kind === 'CONSISTENT' && values['link-all'])
+			{
 				// Link-all mode organizes a trusted export: a CONSISTENT file (EXIF
 				// date agrees with its folder) is still worth a clean alias. Only fs
 				// items reach CONSISTENT, so there is never an imessage block here.
-				fixableEntries.push({finding, cameraInfo, location, sourceFolderName});
-			} else if (finding.kind === 'NO_METADATA_DATE' && values['show-all']) {
+				fixableEntries.push(
+					{
+						finding,
+						cameraInfo,
+						location,
+						sourceFolderName,
+					},
+				);
+			}
+			else if (finding.kind === 'NO_METADATA_DATE' && values['show-all'])
+			{
 				console.log(`\nNO METADATA DATE  ${relative(root, finding.path)}`);
 			}
 
@@ -716,54 +1061,90 @@ async function main(): Promise<void> {
 			if (
 				item.kind === 'fs' &&
 				(finding.kind === 'CONSISTENT' || finding.kind === 'WRONG_DATE' || finding.kind === 'MISSING_DATE')
-			) {
+			)
+			{
 				const folderPath = datedAncestorFolder(item.path, root);
-				if (folderPath !== null) {
-					if (!datedFolders.has(folderPath)) {
+				if (folderPath !== null)
+				{
+					if (!datedFolders.has(folderPath))
+					{
 						const folderDate = parseDateFromString(basename(folderPath));
-						if (folderDate !== null) {
-							datedFolders.set(folderPath, {folderPath, folderDate});
+						if (folderDate !== null)
+						{
+							datedFolders.set(
+								folderPath,
+								{
+									folderPath,
+									folderDate,
+								},
+							);
 						}
 					}
-					folderEntries.push({path: item.path, metadataDate: finding.metadataDate, folderPath});
+					folderEntries.push(
+						{
+							path: item.path,
+							metadataDate: finding.metadataDate,
+							folderPath,
+						},
+					);
 				}
 			}
 
-			if (scanned % 200 === 0) {
+			if (scanned % 200 === 0)
+			{
 				process.stderr.write(`  ...scanned ${scanned} files\r`);
 			}
 		}
-	} finally {
+	}
+	finally
+	{
 		await exiftool.end();
 	}
 
 	const folderWarnings = planFolderWarnings(folderEntries, Array.from(datedFolders.values()));
-	if (folderWarnings.length > 0) {
+	if (folderWarnings.length > 0)
+	{
 		console.log(`\n${'-'.repeat(48)}`);
 		console.log('Folder-level warnings');
-		for (const warning of folderWarnings) {
+		for (const warning of folderWarnings)
+		{
 			printFolderWarning(warning, root);
 		}
 	}
 
-	if (fixableEntries.length > 0 && (values.fix || values.plan !== undefined)) {
+	if (fixableEntries.length > 0 && (values.fix || values.plan !== undefined))
+	{
 		console.log(`\n${'-'.repeat(48)}`);
 		const deduped = dedupeImessageEntries(fixableEntries, dedupeImessage);
-		if (deduped.droppedCount > 0) {
+		if (deduped.droppedCount > 0)
+		{
 			process.stderr.write(`Deduped ${deduped.droppedCount} attachments (${deduped.savedBytes} bytes saved)\n`);
 		}
-		const plan = planLinksFromFindings(deduped.entries, root, {
-			stripCameraId: values['strip-camera-id'],
-			outputRoot,
-			linkAll: values['link-all'],
-		});
-		if (values.plan !== undefined) {
+		const plan = planLinksFromFindings(
+			deduped.entries,
+			root,
+			{
+				stripCameraId: values['strip-camera-id'],
+				outputRoot,
+				linkAll: values['link-all'],
+			},
+		);
+		if (values.plan !== undefined)
+		{
 			await writePlanFile(values.plan, plan);
 			console.log(`Wrote ${plan.length} plan entries to ${values.plan}`);
-		} else {
-			await mkdir(outputRoot ?? root, {recursive: true});
+		}
+		else
+		{
+			await mkdir(
+				outputRoot ?? root,
+				{
+					recursive: true,
+				},
+			);
 			const probeSource = plan[0]?.from;
-			if (probeSource !== undefined && !(await probeHardLinkSupport(probeSource, outputRoot ?? root))) {
+			if (probeSource !== undefined && !(await probeHardLinkSupport(probeSource, outputRoot ?? root)))
+			{
 				console.error(
 					`Error: cannot create hard links from ${probeSource} into ${outputRoot ?? root}. Either the destination filesystem does not support hard links (ExFAT/FAT/SMB) or source and destination are on different filesystems (cross-device link not permitted). --fix requires source and destination on the same APFS or HFS+ volume.`,
 				);

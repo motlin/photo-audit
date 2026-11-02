@@ -20,9 +20,21 @@ import type {AttachmentRow} from './imessage/chatDb.ts';
 import type {CameraInfo} from './metadata.ts';
 import {parseDateFromString} from './parseDate.ts';
 
-export type MediaItem = {kind: 'fs'; path: string} | {kind: 'imessage'; path: string; chat: AttachmentRow};
+export type MediaItem =
+	|
+	  {
+			kind: 'fs';
+			path: string;
+	  }
+	|
+	  {
+			kind: 'imessage';
+			path: string;
+			chat: AttachmentRow;
+	  };
 
-export interface ImessageContext {
+export interface ImessageContext
+{
 	isFromMe: boolean;
 	handleId: string | null;
 	chatDisplayName: string | null;
@@ -30,7 +42,8 @@ export interface ImessageContext {
 	chatHandles: string[];
 }
 
-export interface MediaItemContext {
+export interface MediaItemContext
+{
 	sourceFolderName: string | null;
 	place: string | null;
 	folderDate: DateParts | null;
@@ -54,8 +67,10 @@ export async function contextFor(
 	item: MediaItem,
 	root: string,
 	homeZone: string,
-): Promise<MediaItemContext> {
-	if (item.kind === 'imessage') {
+): Promise<MediaItemContext>
+{
+	if (item.kind === 'imessage')
+	{
 		const result = await auditImessageFile(exiftool, item.chat, homeZone);
 		return {
 			sourceFolderName: item.chat.chatDisplayName ?? item.chat.handleId,
@@ -65,7 +80,8 @@ export async function contextFor(
 			cameraInfo: result.cameraInfo,
 			location: result.location,
 			imessageDedupeKey: result.dedupeKey,
-			imessage: {
+			imessage:
+			{
 				isFromMe: item.chat.isFromMe,
 				handleId: item.chat.handleId,
 				chatDisplayName: item.chat.chatDisplayName,

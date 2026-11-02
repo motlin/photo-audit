@@ -35,9 +35,11 @@ const MEDIA_EXTENSIONS = new Set([
 	'wmv',
 ]);
 
-function isMediaFile(name: string): boolean {
+function isMediaFile(name: string): boolean
+{
 	const dot = name.lastIndexOf('.');
-	if (dot < 0) {
+	if (dot < 0)
+	{
 		return false;
 	}
 	return MEDIA_EXTENSIONS.has(name.slice(dot + 1).toLowerCase());
@@ -50,7 +52,8 @@ function isMediaFile(name: string): boolean {
  * whole-volume run would re-discover the organized hard links it just created,
  * or grind through millions of backup files.
  */
-function isWithin(dir: string, excludeRoot: string): boolean {
+function isWithin(dir: string, excludeRoot: string): boolean
+{
 	const rel = relative(excludeRoot, dir);
 	return rel === '' || (!rel.startsWith('..') && !rel.startsWith('/'));
 }
@@ -65,24 +68,39 @@ function isWithin(dir: string, excludeRoot: string): boolean {
  * folders are never walked. Pass absolute, resolved paths so the prefix
  * comparison is reliable.
  */
-export async function* walkMedia(root: string, excludeRoots: readonly string[] = []): AsyncGenerator<string> {
-	if (excludeRoots.some((excludeRoot) => isWithin(root, excludeRoot))) {
+export async function* walkMedia(root: string, excludeRoots: readonly string[] = []): AsyncGenerator<string>
+{
+	if (excludeRoots.some((excludeRoot) => isWithin(root, excludeRoot)))
+	{
 		return;
 	}
 	let entries;
-	try {
-		entries = await readdir(root, {withFileTypes: true});
-	} catch {
+	try
+	{
+		entries = await readdir(
+			root,
+			{
+				withFileTypes: true,
+			},
+		);
+	}
+	catch
+	{
 		return;
 	}
-	for (const entry of entries) {
-		if (entry.name.startsWith('.')) {
+	for (const entry of entries)
+	{
+		if (entry.name.startsWith('.'))
+		{
 			continue;
 		}
 		const full = join(root, entry.name);
-		if (entry.isDirectory()) {
+		if (entry.isDirectory())
+		{
 			yield* walkMedia(full, excludeRoots);
-		} else if (entry.isFile() && isMediaFile(entry.name)) {
+		}
+		else if (entry.isFile() && isMediaFile(entry.name))
+		{
 			yield full;
 		}
 	}

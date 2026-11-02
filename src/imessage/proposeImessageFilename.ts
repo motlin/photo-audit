@@ -47,7 +47,8 @@ const SCREENSHOT_STEM = /^Screenshot \d{4}-\d{2}-\d{2} at \d{1,2}\.\d{2}\.\d{2}[
  */
 const LITERAL_DROP_STEMS = new Set(['FullSizeRender', 'image', 'video', 'photo', 'Attachment']);
 
-export interface ProposeImessageFilenameInput {
+export interface ProposeImessageFilenameInput
+{
 	originalName: string;
 	date: DateParts;
 	senderName: string | null;
@@ -55,26 +56,34 @@ export interface ProposeImessageFilenameInput {
 	cameraSuffix: string | null;
 }
 
-function transformStem(stem: string): string {
-	if (stem === '') {
+function transformStem(stem: string): string
+{
+	if (stem === '')
+	{
 		return '';
 	}
-	if (IMESSAGE_UUID_STEM.test(stem)) {
+	if (IMESSAGE_UUID_STEM.test(stem))
+	{
 		return '';
 	}
-	if (PLAIN_UUID_STEM.test(stem)) {
+	if (PLAIN_UUID_STEM.test(stem))
+	{
 		return '';
 	}
-	if (CAMERA_ID_STEM.test(stem)) {
+	if (CAMERA_ID_STEM.test(stem))
+	{
 		return '';
 	}
-	if (LITERAL_DROP_STEMS.has(stem)) {
+	if (LITERAL_DROP_STEMS.has(stem))
+	{
 		return '';
 	}
-	if (SCREENSHOT_STEM.test(stem)) {
+	if (SCREENSHOT_STEM.test(stem))
+	{
 		return 'Screenshot';
 	}
-	if (URL_PREFIX.test(stem)) {
+	if (URL_PREFIX.test(stem))
+	{
 		return stem.replace(URL_PREFIX, '');
 	}
 	return stem;
@@ -97,7 +106,8 @@ function transformStem(stem: string): string {
  * those to something a human can scan, while keeping human-typed stems and
  * macOS screenshots intact (just shortened).
  */
-export function proposeImessageFilename(input: ProposeImessageFilenameInput): string {
+export function proposeImessageFilename(input: ProposeImessageFilenameInput): string
+{
 	const {originalName, date, senderName, recipient, cameraSuffix} = input;
 
 	const dot = originalName.lastIndexOf('.');
@@ -111,17 +121,24 @@ export function proposeImessageFilename(input: ProposeImessageFilenameInput): st
 	const hasRecipient = recipient !== null && recipient !== '';
 
 	const parts: string[] = [formatDate(date)];
-	if (hasSender && hasRecipient) {
+	if (hasSender && hasRecipient)
+	{
 		parts.push(`(${senderName} → ${recipient})`);
-	} else if (hasSender) {
+	}
+	else if (hasSender)
+	{
 		parts.push(`(${senderName})`);
-	} else if (hasRecipient) {
+	}
+	else if (hasRecipient)
+	{
 		parts.push(`(${recipient})`);
 	}
-	if (cameraSuffix !== null && cameraSuffix !== '') {
+	if (cameraSuffix !== null && cameraSuffix !== '')
+	{
 		parts.push(`(${cameraSuffix})`);
 	}
-	if (transformedStem !== '') {
+	if (transformedStem !== '')
+	{
 		parts.push(transformedStem);
 	}
 
