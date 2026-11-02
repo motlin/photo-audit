@@ -58,10 +58,10 @@ jobs:
                   git config --global user.name "GitHub Actions"
                   git config --global user.email "github-actions@github.com"
 
-            - name: Run vp check --fix
+            - name: Run vp check --no-fmt --fix
               run: |
                   vp install
-                  vp check --fix
+                  vp check --no-fmt --fix
 
                   if [[ -n $(git status --porcelain) ]]; then
                     FIX_BRANCH="fix-${{ github.event.pull_request.number }}-check"

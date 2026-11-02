@@ -9,7 +9,7 @@ ci := env("CI", "")
 [group('setup')]
 install:
     vp install
-    vp fmt CLAUDE.md
+    oxfmt-next-line CLAUDE.md
 
 # Run dev server
 dev *args: install
@@ -22,11 +22,11 @@ lint: install
 # Run formatter
 format: install
     pre-commit run just-fmt --all-files
-    vp fmt {{ if ci != "" { "--check" } else { "" } }}
+    oxfmt-next-line {{ if ci != "" { "--check" } else { "" } }}
 
-# Run checks (format + lint + typecheck)
+# Run checks (lint + typecheck; formatting is `just format`)
 check: install
-    vp check {{ if ci != "" { "" } else { "--fix" } }}
+    vp check --no-fmt {{ if ci != "" { "" } else { "--fix" } }}
 
 # Run tests
 test *args: install

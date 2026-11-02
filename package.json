@@ -4,13 +4,14 @@
 	"private": true,
 	"description": "Identify (and later fix) date problems in a photo/video library",
 	"type": "module",
-	"scripts": {
+	"scripts":
+	{
 		"preinstall": "npx only-allow pnpm",
 		"build": "tsgo && vp build",
 		"oxlint": "vp lint . --fix",
 		"oxlint:ci": "vp lint . --format github",
-		"fmt": "vp fmt",
-		"fmt:ci": "vp fmt --check",
+		"fmt": "oxfmt-next-line",
+		"fmt:ci": "oxfmt-next-line --check",
 		"fallow": "fallow fix --yes",
 		"fallow:ci": "fallow dead-code",
 		"typecheck": "tsgo --noEmit",
@@ -20,11 +21,13 @@
 		"audit": "tsx src/cli.ts",
 		"prepare": "VITE_GIT_HOOKS=0 vp config"
 	},
-	"dependencies": {
+	"dependencies":
+	{
 		"better-sqlite3": "^12.10.0",
 		"exiftool-vendored": "^35.20.0"
 	},
-	"devDependencies": {
+	"devDependencies":
+	{
 		"@types/better-sqlite3": "^7.6.13",
 		"@types/node": "^25.9.3",
 		"@typescript/native-preview": "^7.0.0-dev.20260611.2",
