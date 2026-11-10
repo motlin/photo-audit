@@ -4,7 +4,8 @@
  * unit-tested without touching disk.
  */
 
-export interface ProposedRename {
+export interface ProposedRename
+{
 	/** Absolute path of the existing file. Stays in place after --fix. */
 	from: string;
 	/** Absolute path of the new hard-linked alias to be added. */
@@ -16,21 +17,26 @@ export interface ProposedRename {
  * same final path cannot both succeed; `--fix` must skip every member of such
  * a collision rather than letting whichever runs first clobber the other.
  */
-export function collisionsIn(proposed: readonly ProposedRename[]): Set<string> {
+export function collisionsIn(proposed: readonly ProposedRename[]): Set<string>
+{
 	const counts = new Map<string, number>();
-	for (const {to} of proposed) {
+	for (const {to} of proposed)
+	{
 		counts.set(to, (counts.get(to) ?? 0) + 1);
 	}
 	const collisions = new Set<string>();
-	for (const [target, count] of counts) {
-		if (count > 1) {
+	for (const [target, count] of counts)
+	{
+		if (count > 1)
+		{
 			collisions.add(target);
 		}
 	}
 	return collisions;
 }
 
-export interface UndoLogEntry {
+export interface UndoLogEntry
+{
 	timestamp: string;
 	from: string;
 	to: string;
@@ -40,7 +46,13 @@ export interface UndoLogEntry {
  * One line of the JSON-lines undo log. Includes the trailing newline so callers
  * can append the result directly. Field order is fixed for human readability.
  */
-export function formatUndoLogEntry(entry: UndoLogEntry): string {
-	const ordered = {timestamp: entry.timestamp, from: entry.from, to: entry.to};
+export function formatUndoLogEntry(entry: UndoLogEntry): string
+{
+	const ordered =
+	{
+		timestamp: entry.timestamp,
+		from: entry.from,
+		to: entry.to,
+	};
 	return `${JSON.stringify(ordered)}\n`;
 }

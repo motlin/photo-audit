@@ -20,7 +20,8 @@ const DUMP_FOLDER_NAMES = new Set([
 
 const DUMP_FOLDER_PATTERNS = [/^iphone(\s+\d+)?\s+backup$/i, /^ipad(\s+\d+)?\s+backup$/i];
 
-function pad(n: number, width = 2): string {
+function pad(n: number, width = 2): string
+{
 	return String(n).padStart(width, '0');
 }
 
@@ -29,19 +30,24 @@ function pad(n: number, width = 2): string {
  * date and trimming. Returns null when nothing meaningful is left or the name
  * is a known dumping-ground folder.
  */
-function folderTitle(folderName: string | null): string | null {
-	if (folderName === null) {
+function folderTitle(folderName: string | null): string | null
+{
+	if (folderName === null)
+	{
 		return null;
 	}
 	const trimmed = folderName.trim();
-	if (trimmed === '') {
+	if (trimmed === '')
+	{
 		return null;
 	}
 	const lower = trimmed.toLowerCase();
-	if (DUMP_FOLDER_NAMES.has(lower) || DUMP_FOLDER_PATTERNS.some((pattern) => pattern.test(trimmed))) {
+	if (DUMP_FOLDER_NAMES.has(lower) || DUMP_FOLDER_PATTERNS.some((pattern) => pattern.test(trimmed)))
+	{
 		return null;
 	}
-	if (parseDateFromString(trimmed) !== null) {
+	if (parseDateFromString(trimmed) !== null)
+	{
 		// Strip a leading date, then an optional " - <date>" range component
 		// (iMazing names folders "<date> - <date> - <event>"), then any leading
 		// separator dash, leaving just the event title. A bare date or a plain
@@ -65,12 +71,15 @@ function folderTitle(folderName: string | null): string | null {
  * differences are kept: multi-day event folders legitimately hold later-day
  * photos, and those should keep the event suffix.
  */
-function suffixFolderName(sourceFolderName: string | null, metadataYear: number): string | null {
-	if (sourceFolderName === null) {
+function suffixFolderName(sourceFolderName: string | null, metadataYear: number): string | null
+{
+	if (sourceFolderName === null)
+	{
 		return null;
 	}
 	const folderDate = parseDateFromString(sourceFolderName.trim());
-	if (folderDate !== null && folderDate.year !== metadataYear) {
+	if (folderDate !== null && folderDate.year !== metadataYear)
+	{
 		return null;
 	}
 	return sourceFolderName;
@@ -81,18 +90,22 @@ function suffixFolderName(sourceFolderName: string | null, metadataYear: number)
  * present, otherwise the GPS-derived place name. Returns null when neither is
  * available.
  */
-export function pickDaySuffix(sourceFolderName: string | null, place: string | null): string | null {
+export function pickDaySuffix(sourceFolderName: string | null, place: string | null): string | null
+{
 	const title = folderTitle(sourceFolderName);
-	if (title !== null) {
+	if (title !== null)
+	{
 		return title;
 	}
-	if (place !== null && place.trim() !== '') {
+	if (place !== null && place.trim() !== '')
+	{
 		return place.trim();
 	}
 	return null;
 }
 
-export interface OutputPathContext {
+export interface OutputPathContext
+{
 	outputRoot: string;
 	metadataDate: DateParts;
 	sourceFolderName: string | null;
@@ -115,16 +128,19 @@ export interface OutputPathContext {
  * Throws when the metadata date lacks a `day` (month-precision sources cannot
  * land in a per-day folder) and `includeDayFolder` is true.
  */
-export function computeOutputDirectory(ctx: OutputPathContext): string {
+export function computeOutputDirectory(ctx: OutputPathContext): string
+{
 	const includeDayFolder = ctx.includeDayFolder ?? true;
 	const {year, month, day} = ctx.metadataDate;
 	const decade = `${Math.floor(year / 10) * 10} Decade`;
 	const yearStr = pad(year, 4);
 	const yearMonth = `${yearStr}-${pad(month)}`;
-	if (!includeDayFolder) {
+	if (!includeDayFolder)
+	{
 		return join(ctx.outputRoot, decade, yearStr, yearMonth);
 	}
-	if (day === null) {
+	if (day === null)
+	{
 		throw new Error('computeOutputDirectory requires a day-precision metadata date');
 	}
 	const dayStr = `${yearMonth}-${pad(day)}`;

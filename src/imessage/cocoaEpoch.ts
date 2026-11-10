@@ -14,9 +14,11 @@ const NANOS_PER_MILLI = 1_000_000n;
 const MILLIS_PER_SECOND = 1000n;
 const COCOA_EPOCH_UNIX_OFFSET_MILLIS = BigInt(COCOA_EPOCH_UNIX_OFFSET_SECONDS) * MILLIS_PER_SECOND;
 
-export function cocoaSecondsToDate(value: number | bigint | null): Date | null {
+export function cocoaSecondsToDate(value: number | bigint | null): Date | null
+{
 	if (value === null) return null;
-	if (typeof value === 'bigint') {
+	if (typeof value === 'bigint')
+	{
 		if (value === 0n) return null;
 		const unixMillis = (value + BigInt(COCOA_EPOCH_UNIX_OFFSET_SECONDS)) * MILLIS_PER_SECOND;
 		return new Date(Number(unixMillis));
@@ -25,9 +27,11 @@ export function cocoaSecondsToDate(value: number | bigint | null): Date | null {
 	return new Date((value + COCOA_EPOCH_UNIX_OFFSET_SECONDS) * 1000);
 }
 
-export function cocoaNanosToDate(value: number | bigint | null): Date | null {
+export function cocoaNanosToDate(value: number | bigint | null): Date | null
+{
 	if (value === null) return null;
-	if (typeof value === 'bigint') {
+	if (typeof value === 'bigint')
+	{
 		if (value === 0n) return null;
 		const cocoaMillis = value / NANOS_PER_MILLI;
 		return new Date(Number(cocoaMillis + COCOA_EPOCH_UNIX_OFFSET_MILLIS));

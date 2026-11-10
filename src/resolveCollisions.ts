@@ -1,14 +1,16 @@
 import {basename, dirname, extname, join} from 'node:path';
 import type {ProposedRename} from './fix.ts';
 
-export interface CollisionResolution {
+export interface CollisionResolution
+{
 	/** Candidates to link: deduped and, where needed, disambiguated. */
 	resolved: ProposedRename[];
 	/** True byte-duplicates that were intentionally dropped (one kept per content). */
 	droppedDuplicates: ProposedRename[];
 }
 
-function stemOf(path: string): string {
+function stemOf(path: string): string
+{
 	const base = basename(path);
 	return base.slice(0, base.length - extname(base).length);
 }
@@ -20,7 +22,8 @@ function stemOf(path: string): string {
  *   `2020-03-03 19.21.06 (iPhone 11 Pro).MOV`
  *     -> `2020-03-03 19.21.06 IMG_0001 (iPhone 11 Pro).MOV`
  */
-function disambiguate(to: string, from: string): string {
+function disambiguate(to: string, from: string): string
+{
 	const dir = dirname(to);
 	const base = basename(to);
 	const ext = extname(base);
@@ -44,23 +47,33 @@ function contentKeys(
 	group: readonly ProposedRename[],
 	sizeOf: (path: string) => number,
 	hashOf: (path: string) => string,
-): Map<ProposedRename, string> {
+): Map<ProposedRename, string>
+{
 	const bySize = new Map<number, ProposedRename[]>();
-	for (const candidate of group) {
+	for (const candidate of group)
+	{
 		const size = sizeOf(candidate.from);
 		const list = bySize.get(size);
-		if (list === undefined) {
+		if (list === undefined)
+		{
 			bySize.set(size, [candidate]);
-		} else {
+		}
+		else
+		{
 			list.push(candidate);
 		}
 	}
 	const keys = new Map<ProposedRename, string>();
-	for (const [size, sameSize] of bySize) {
-		if (sameSize.length === 1) {
+	for (const [size, sameSize] of bySize)
+	{
+		if (sameSize.length === 1)
+		{
 			keys.set(sameSize[0]!, `size:${size}`);
-		} else {
-			for (const candidate of sameSize) {
+		}
+		else
+		{
+			for (const candidate of sameSize)
+			{
 				keys.set(candidate, `size:${size}:hash:${hashOf(candidate.from)}`);
 			}
 		}
@@ -82,42 +95,65 @@ export function resolveCollisions(
 	candidates: readonly ProposedRename[],
 	sizeOf: (path: string) => number,
 	hashOf: (path: string) => string,
-): CollisionResolution {
+): CollisionResolution
+{
 	const byTarget = new Map<string, ProposedRename[]>();
-	for (const candidate of candidates) {
+	for (const candidate of candidates)
+	{
 		const list = byTarget.get(candidate.to);
-		if (list === undefined) {
+		if (list === undefined)
+		{
 			byTarget.set(candidate.to, [candidate]);
-		} else {
+		}
+		else
+		{
 			list.push(candidate);
 		}
 	}
 
 	const resolved: ProposedRename[] = [];
 	const droppedDuplicates: ProposedRename[] = [];
-	for (const group of byTarget.values()) {
-		if (group.length === 1) {
+	for (const group of byTarget.values())
+	{
+		if (group.length === 1)
+		{
 			resolved.push(group[0]!);
 			continue;
 		}
 		const keys = contentKeys(group, sizeOf, hashOf);
 		const keptByContent = new Map<string, ProposedRename>();
-		for (const candidate of group) {
+		for (const candidate of group)
+		{
 			const key = keys.get(candidate)!;
-			if (keptByContent.has(key)) {
+			if (keptByContent.has(key))
+			{
 				droppedDuplicates.push(candidate);
-			} else {
+			}
+			else
+			{
 				keptByContent.set(key, candidate);
 			}
 		}
 		const survivors = [...keptByContent.values()];
-		if (survivors.length === 1) {
+		if (survivors.length === 1)
+		{
 			resolved.push(survivors[0]!);
-		} else {
-			for (const candidate of survivors) {
-				resolved.push({from: candidate.from, to: disambiguate(candidate.to, candidate.from)});
+		}
+		else
+		{
+			for (const candidate of survivors)
+			{
+				resolved.push(
+					{
+						from: candidate.from,
+						to: disambiguate(candidate.to, candidate.from),
+					},
+				);
 			}
 		}
 	}
-	return {resolved, droppedDuplicates};
+	return {
+		resolved,
+		droppedDuplicates,
+	};
 }

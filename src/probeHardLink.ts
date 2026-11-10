@@ -6,26 +6,44 @@ import {join} from 'node:path';
  * `destinationDir`. Catches both filesystems that do not support hard links
  * (ENOTSUP, e.g. ExFAT) and cross-filesystem attempts (EXDEV).
  */
-export async function probeHardLinkSupport(sourceFile: string, destinationDir: string): Promise<boolean> {
-	try {
+export async function probeHardLinkSupport(sourceFile: string, destinationDir: string): Promise<boolean>
+{
+	try
+	{
 		await access(sourceFile);
-	} catch {
+	}
+	catch
+	{
 		return false;
 	}
 	let probeDir: string;
-	try {
+	try
+	{
 		probeDir = await mkdtemp(join(destinationDir, '.photo-audit-probe-'));
-	} catch {
+	}
+	catch
+	{
 		return false;
 	}
 	const target = join(probeDir, 'target');
-	try {
+	try
+	{
 		await link(sourceFile, target);
 		await unlink(target);
 		return true;
-	} catch {
+	}
+	catch
+	{
 		return false;
-	} finally {
-		await rm(probeDir, {recursive: true, force: true});
+	}
+	finally
+	{
+		await rm(
+			probeDir,
+			{
+				recursive: true,
+				force: true,
+			},
+		);
 	}
 }

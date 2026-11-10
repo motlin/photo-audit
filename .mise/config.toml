@@ -1,6 +1,12 @@
+[settings]
+# Skip releases younger than 24 hours when mise chooses a version (`mise upgrade`, `latest`, ranges),
+# enforcing the 24-hour version policy. An exact version pinned here still installs.
+minimum_release_age = "1d"
+
 [tools]
 just = "1.58.0"
 node = "26.3.0"
 "npm:vite-plus" = "0.1.24"
+"npm:oxfmt-next-line" = { version = "0.75.0", allow_low_downloads = true }
 "pipx:yamllint" = "latest"
 pre-commit = "4.6.0"

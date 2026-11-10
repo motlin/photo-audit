@@ -1,6 +1,7 @@
 import {ExifDate, ExifDateTime, type Tags} from 'exiftool-vendored';
 import {describe, expect, it} from 'vitest';
-import {
+import
+{
 	extractCameraInfo,
 	extractMetadataDate,
 	extractDateOrEdit,
@@ -13,20 +14,30 @@ import {
 //   year, month, day, hour, minute, second, millisecond?, tzoffsetMinutes?,
 //   rawValue?, zoneName?, inferredZone?
 
-describe('toLocalDateParts', () => {
-	it('converts a defaulted-UTC video date to the home timezone', () => {
+describe('toLocalDateParts', () =>
+{
+	it('converts a defaulted-UTC video date to the home timezone', () =>
+	{
 		// QuickTime CreateDate stored in UTC; exiftool-vendored could not find a
 		// real zone, so it defaulted to UTC (inferredZone === true).
 		const defaultedUtc = new ExifDateTime(2019, 2, 11, 4, 49, 44, undefined, 0, '2019:02:11 04:49:44', 'UTC', true);
-		expect(toLocalDateParts(defaultedUtc, 'America/New_York')).toEqual({
-			year: 2019,
-			month: 2,
-			day: 10,
-			time: {hour: 23, minute: 49, second: 44},
-		});
+		expect(toLocalDateParts(defaultedUtc, 'America/New_York')).toEqual(
+			{
+				year: 2019,
+				month: 2,
+				day: 10,
+				time:
+				{
+					hour: 23,
+					minute: 49,
+					second: 44,
+				},
+			},
+		);
 	});
 
-	it('uses an explicit-offset date as-is, never shifting to the home zone', () => {
+	it('uses an explicit-offset date as-is, never shifting to the home zone', () =>
+	{
 		// QuickTime CreationDate carries a real offset; its wall-clock is already
 		// the capture-local date, regardless of where the library owner lives.
 		const zoned = new ExifDateTime(
@@ -42,15 +53,23 @@ describe('toLocalDateParts', () => {
 			'UTC-4',
 			false,
 		);
-		expect(toLocalDateParts(zoned, 'America/Los_Angeles')).toEqual({
-			year: 2023,
-			month: 5,
-			day: 26,
-			time: {hour: 18, minute: 29, second: 41},
-		});
+		expect(toLocalDateParts(zoned, 'America/Los_Angeles')).toEqual(
+			{
+				year: 2023,
+				month: 5,
+				day: 26,
+				time:
+				{
+					hour: 18,
+					minute: 29,
+					second: 41,
+				},
+			},
+		);
 	});
 
-	it('uses a backfilled real-zone date as-is', () => {
+	it('uses a backfilled real-zone date as-is', () =>
+	{
 		// exiftool-vendored recovered the true zone from a sibling tag, so the
 		// wall-clock is already correct even though inferredZone is true.
 		const backfilled = new ExifDateTime(
@@ -66,58 +85,87 @@ describe('toLocalDateParts', () => {
 			'America/New_York',
 			true,
 		);
-		expect(toLocalDateParts(backfilled, 'America/Los_Angeles')).toEqual({
-			year: 2023,
-			month: 5,
-			day: 26,
-			time: {hour: 18, minute: 29, second: 41},
-		});
+		expect(toLocalDateParts(backfilled, 'America/Los_Angeles')).toEqual(
+			{
+				year: 2023,
+				month: 5,
+				day: 26,
+				time:
+				{
+					hour: 18,
+					minute: 29,
+					second: 41,
+				},
+			},
+		);
 	});
 
-	it('uses an explicitly-UTC EXIF date as-is (the photographer meant that date)', () => {
+	it('uses an explicitly-UTC EXIF date as-is (the photographer meant that date)', () =>
+	{
 		// JPG DateTimeOriginal written as "...Z": the zone is explicit, not
 		// defaulted, so the date label is taken at face value.
 		const explicitUtc = new ExifDateTime(2020, 10, 18, 0, 0, 0, undefined, 0, '2020-10-18T00:00:00Z', 'UTC', false);
-		expect(toLocalDateParts(explicitUtc, 'America/New_York')).toEqual({
-			year: 2020,
-			month: 10,
-			day: 18,
-			time: {hour: 0, minute: 0, second: 0},
-		});
+		expect(toLocalDateParts(explicitUtc, 'America/New_York')).toEqual(
+			{
+				year: 2020,
+				month: 10,
+				day: 18,
+				time:
+				{
+					hour: 0,
+					minute: 0,
+					second: 0,
+				},
+			},
+		);
 	});
 
-	it('handles a date-only ExifDate', () => {
-		expect(toLocalDateParts(new ExifDate(2010, 3, 3), 'America/New_York')).toEqual({
-			year: 2010,
-			month: 3,
-			day: 3,
-			time: null,
-		});
+	it('handles a date-only ExifDate', () =>
+	{
+		expect(toLocalDateParts(new ExifDate(2010, 3, 3), 'America/New_York')).toEqual(
+			{
+				year: 2010,
+				month: 3,
+				day: 3,
+				time: null,
+			},
+		);
 	});
 
-	it('returns null for non-date values', () => {
+	it('returns null for non-date values', () =>
+	{
 		expect(toLocalDateParts(undefined, 'America/New_York')).toBeNull();
 		expect(toLocalDateParts('2020:01:01', 'America/New_York')).toBeNull();
 	});
 });
 
-describe('extractMetadataDate confidence', () => {
-	it("flags a midnight ExifDateTime as 'date-only' low confidence", () => {
+describe('extractMetadataDate confidence', () =>
+{
+	it("flags a midnight ExifDateTime as 'date-only' low confidence", () =>
+	{
 		const midnight = new ExifDateTime(2020, 10, 18, 0, 0, 0, undefined, 0, '2020-10-18T00:00:00Z', 'UTC', false);
-		const tags = {DateTimeOriginal: midnight} as unknown as Tags;
+		const tags =
+		{
+			DateTimeOriginal: midnight,
+		} as unknown as Tags;
 		const result = extractMetadataDate(tags, 'America/New_York');
 		expect(result).not.toBeNull();
 		expect(result?.confidence).toBe('date-only');
 	});
 
-	it("flags an ExifDate (no time component) as 'date-only' low confidence", () => {
-		const tags = {DateTimeOriginal: new ExifDate(2021, 4, 12)} as unknown as Tags;
+	it("flags an ExifDate (no time component) as 'date-only' low confidence", () =>
+	{
+		const tags =
+		{
+			DateTimeOriginal: new ExifDate(2021, 4, 12),
+		} as unknown as Tags;
 		const result = extractMetadataDate(tags, 'America/New_York');
 		expect(result).not.toBeNull();
 		expect(result?.confidence).toBe('date-only');
 	});
 
-	it("flags an ExifDateTime with a real wall-clock time as 'high' confidence", () => {
+	it("flags an ExifDateTime with a real wall-clock time as 'high' confidence", () =>
+	{
 		const wallClock = new ExifDateTime(
 			2023,
 			5,
@@ -131,15 +179,20 @@ describe('extractMetadataDate confidence', () => {
 			'UTC-4',
 			false,
 		);
-		const tags = {DateTimeOriginal: wallClock} as unknown as Tags;
+		const tags =
+		{
+			DateTimeOriginal: wallClock,
+		} as unknown as Tags;
 		const result = extractMetadataDate(tags, 'America/New_York');
 		expect(result).not.toBeNull();
 		expect(result?.confidence).toBe('high');
 	});
 });
 
-describe('extractMetadataDate tag selection', () => {
-	it('prefers a real-timestamp CreateDate over a midnight DateTimeOriginal', () => {
+describe('extractMetadataDate tag selection', () =>
+{
+	it('prefers a real-timestamp CreateDate over a midnight DateTimeOriginal', () =>
+	{
 		// Real-world case from iMazing dump: DateTimeOriginal was a date-only
 		// sentinel at midnight, while CreateDate carried the real capture time.
 		const midnightOriginal = new ExifDateTime(
@@ -156,7 +209,8 @@ describe('extractMetadataDate tag selection', () => {
 			false,
 		);
 		const realCreate = new ExifDateTime(2021, 5, 15, 15, 25, 0, undefined, 0, '2021:05:15 15:25:00Z', 'UTC', false);
-		const tags = {
+		const tags =
+		{
 			DateTimeOriginal: midnightOriginal,
 			CreateDate: realCreate,
 		} as unknown as Tags;
@@ -164,15 +218,23 @@ describe('extractMetadataDate tag selection', () => {
 		expect(result).not.toBeNull();
 		expect(result?.tag).toBe('CreateDate');
 		expect(result?.confidence).toBe('high');
-		expect(result?.date).toEqual({
-			year: 2021,
-			month: 5,
-			day: 15,
-			time: {hour: 15, minute: 25, second: 0},
-		});
+		expect(result?.date).toEqual(
+			{
+				year: 2021,
+				month: 5,
+				day: 15,
+				time:
+				{
+					hour: 15,
+					minute: 25,
+					second: 0,
+				},
+			},
+		);
 	});
 
-	it('prefers an explicit-offset CreationDate over a defaulted-UTC CreateDate', () => {
+	it('prefers an explicit-offset CreationDate over a defaulted-UTC CreateDate', () =>
+	{
 		const defaultedUtcCreate = new ExifDateTime(
 			2019,
 			2,
@@ -199,22 +261,31 @@ describe('extractMetadataDate tag selection', () => {
 			'UTC-5',
 			false,
 		);
-		const tags = {
+		const tags =
+		{
 			CreateDate: defaultedUtcCreate,
 			CreationDate: zonedCreation,
 		} as unknown as Tags;
 		const result = extractMetadataDate(tags, 'America/Los_Angeles');
 		expect(result).not.toBeNull();
 		expect(result?.tag).toBe('CreationDate');
-		expect(result?.date).toEqual({
-			year: 2019,
-			month: 2,
-			day: 10,
-			time: {hour: 23, minute: 49, second: 44},
-		});
+		expect(result?.date).toEqual(
+			{
+				year: 2019,
+				month: 2,
+				day: 10,
+				time:
+				{
+					hour: 23,
+					minute: 49,
+					second: 44,
+				},
+			},
+		);
 	});
 
-	it('falls back to precedence order when candidates tie on confidence and zone', () => {
+	it('falls back to precedence order when candidates tie on confidence and zone', () =>
+	{
 		const subSec = new ExifDateTime(2022, 6, 1, 10, 0, 0, 500, -240, '2022:06:01 10:00:00.5-04:00', 'UTC-4', false);
 		const original = new ExifDateTime(
 			2022,
@@ -229,7 +300,8 @@ describe('extractMetadataDate tag selection', () => {
 			'UTC-4',
 			false,
 		);
-		const tags = {
+		const tags =
+		{
 			SubSecDateTimeOriginal: subSec,
 			DateTimeOriginal: original,
 		} as unknown as Tags;
@@ -237,7 +309,8 @@ describe('extractMetadataDate tag selection', () => {
 		expect(result?.tag).toBe('SubSecDateTimeOriginal');
 	});
 
-	it('ignores edit-only tags like ModifyDate even when no capture tag is present', () => {
+	it('ignores edit-only tags like ModifyDate even when no capture tag is present', () =>
+	{
 		// Photoshop-edited file: no capture tag at all, only edit-session tags.
 		const modify = new ExifDateTime(
 			2018,
@@ -252,7 +325,8 @@ describe('extractMetadataDate tag selection', () => {
 			'UTC-4',
 			false,
 		);
-		const tags = {
+		const tags =
+		{
 			ModifyDate: modify,
 			Software: 'Adobe Photoshop CC 2015.5 (Windows)',
 		} as unknown as Tags;
@@ -260,7 +334,8 @@ describe('extractMetadataDate tag selection', () => {
 		expect(result).toBeNull();
 	});
 
-	it("marks the picked date 'date-only' when every candidate is midnight", () => {
+	it("marks the picked date 'date-only' when every candidate is midnight", () =>
+	{
 		const midnightOriginal = new ExifDateTime(
 			2021,
 			4,
@@ -287,7 +362,8 @@ describe('extractMetadataDate tag selection', () => {
 			'UTC',
 			false,
 		);
-		const tags = {
+		const tags =
+		{
 			DateTimeOriginal: midnightOriginal,
 			CreateDate: midnightCreate,
 		} as unknown as Tags;
@@ -297,8 +373,10 @@ describe('extractMetadataDate tag selection', () => {
 	});
 });
 
-describe('extractDateOrEdit', () => {
-	it('returns a capture metadata value when capture tags are present', () => {
+describe('extractDateOrEdit', () =>
+{
+	it('returns a capture metadata value when capture tags are present', () =>
+	{
 		const wallClock = new ExifDateTime(
 			2023,
 			5,
@@ -312,21 +390,27 @@ describe('extractDateOrEdit', () => {
 			'UTC-4',
 			false,
 		);
-		const tags = {DateTimeOriginal: wallClock} as unknown as Tags;
+		const tags =
+		{
+			DateTimeOriginal: wallClock,
+		} as unknown as Tags;
 		const result = extractDateOrEdit(tags, 'America/New_York');
 		expect(result?.kind).toBe('capture');
-		if (result?.kind === 'capture') {
+		if (result?.kind === 'capture')
+		{
 			expect(result.metadata.tag).toBe('DateTimeOriginal');
 			expect(result.metadata.confidence).toBe('high');
 		}
 	});
 
-	it('returns null when there are no capture or edit tags at all', () => {
+	it('returns null when there are no capture or edit tags at all', () =>
+	{
 		const tags = {} as unknown as Tags;
 		expect(extractDateOrEdit(tags, 'America/New_York')).toBeNull();
 	});
 
-	it("returns an 'edit-derived' value when only edit tags + editing software are present", () => {
+	it("returns an 'edit-derived' value when only edit tags + editing software are present", () =>
+	{
 		// Adobe Photoshop edit of an older photo: no DateTimeOriginal at all,
 		// just XMP CreateDate (first edit save) and ModifyDate (last edit).
 		const firstEdit = new ExifDateTime(
@@ -355,48 +439,74 @@ describe('extractDateOrEdit', () => {
 			'UTC-4',
 			false,
 		);
-		const tags = {
+		const tags =
+		{
 			ModifyDate: lastEdit,
 			MetadataDate: lastEdit,
 			Software: 'Adobe Photoshop CC 2015.5 (Windows)',
 			History: [
-				{Action: 'saved', When: firstEdit},
-				{Action: 'saved', When: lastEdit},
+				{
+					Action: 'saved',
+					When: firstEdit,
+				},
+				{
+					Action: 'saved',
+					When: lastEdit,
+				},
 			],
 		} as unknown as Tags;
 		const result = extractDateOrEdit(tags, 'America/New_York');
 		expect(result?.kind).toBe('edit-derived');
-		if (result?.kind === 'edit-derived') {
+		if (result?.kind === 'edit-derived')
+		{
 			expect(result.software).toBe('Adobe Photoshop CC 2015.5 (Windows)');
-			expect(result.firstEdit).toEqual({
-				year: 2018,
-				month: 4,
-				day: 20,
-				time: {hour: 21, minute: 53, second: 52},
-			});
-			expect(result.lastEdit).toEqual({
-				year: 2018,
-				month: 4,
-				day: 21,
-				time: {hour: 9, minute: 28, second: 45},
-			});
+			expect(result.firstEdit).toEqual(
+				{
+					year: 2018,
+					month: 4,
+					day: 20,
+					time:
+					{
+						hour: 21,
+						minute: 53,
+						second: 52,
+					},
+				},
+			);
+			expect(result.lastEdit).toEqual(
+				{
+					year: 2018,
+					month: 4,
+					day: 21,
+					time:
+					{
+						hour: 9,
+						minute: 28,
+						second: 45,
+					},
+				},
+			);
 		}
 	});
 
-	it('recognizes Lightroom as edit software', () => {
+	it('recognizes Lightroom as edit software', () =>
+	{
 		const modify = new ExifDateTime(2019, 1, 1, 12, 0, 0, undefined, 0, '2019:01:01 12:00:00Z', 'UTC', false);
-		const tags = {
+		const tags =
+		{
 			ModifyDate: modify,
 			CreatorTool: 'Adobe Lightroom Classic 9.0',
 		} as unknown as Tags;
 		const result = extractDateOrEdit(tags, 'America/New_York');
 		expect(result?.kind).toBe('edit-derived');
-		if (result?.kind === 'edit-derived') {
+		if (result?.kind === 'edit-derived')
+		{
 			expect(result.software).toBe('Adobe Lightroom Classic 9.0');
 		}
 	});
 
-	it('does not flag edit-derived when capture tags are also present', () => {
+	it('does not flag edit-derived when capture tags are also present', () =>
+	{
 		// File has both DateTimeOriginal AND edit tags + Photoshop Software:
 		// this is the common "I edited a photo but kept the original capture
 		// timestamp" case. The capture date wins.
@@ -426,7 +536,8 @@ describe('extractDateOrEdit', () => {
 			'UTC-4',
 			false,
 		);
-		const tags = {
+		const tags =
+		{
 			DateTimeOriginal: capture,
 			ModifyDate: modify,
 			Software: 'Adobe Photoshop CC 2015.5 (Windows)',
@@ -435,7 +546,8 @@ describe('extractDateOrEdit', () => {
 		expect(result?.kind).toBe('capture');
 	});
 
-	it('does not flag edit-derived when edit tags exist without recognized editing software', () => {
+	it('does not flag edit-derived when edit tags exist without recognized editing software', () =>
+	{
 		// Plain camera JPEG: ModifyDate is set by the camera firmware to match
 		// capture time. We require explicit editing software to avoid false
 		// positives.
@@ -452,7 +564,8 @@ describe('extractDateOrEdit', () => {
 			'UTC-5',
 			false,
 		);
-		const tags = {
+		const tags =
+		{
 			ModifyDate: modify,
 			Software: 'Canon EOS R5 firmware 1.6.0',
 		} as unknown as Tags;
@@ -461,58 +574,83 @@ describe('extractDateOrEdit', () => {
 	});
 });
 
-describe('extractCameraInfo', () => {
-	it('returns trimmed Make and Model when both are present', () => {
-		const tags = {Make: 'Apple', Model: 'iPhone 15 Pro'} as unknown as Tags;
-		expect(extractCameraInfo(tags)).toEqual({
-			make: 'Apple',
-			model: 'iPhone 15 Pro',
-			lensModel: null,
-			focalLengthIn35mmFormat: null,
-			focalLength: null,
-		});
+describe('extractCameraInfo', () =>
+{
+	it('returns trimmed Make and Model when both are present', () =>
+	{
+		const tags =
+		{
+			Make: 'Apple',
+			Model: 'iPhone 15 Pro',
+		} as unknown as Tags;
+		expect(extractCameraInfo(tags)).toEqual(
+			{
+				make: 'Apple',
+				model: 'iPhone 15 Pro',
+				lensModel: null,
+				focalLengthIn35mmFormat: null,
+				focalLength: null,
+			},
+		);
 	});
 
-	it('returns null fields when the tags are absent', () => {
-		expect(extractCameraInfo({} as Tags)).toEqual({
-			make: null,
-			model: null,
-			lensModel: null,
-			focalLengthIn35mmFormat: null,
-			focalLength: null,
-		});
+	it('returns null fields when the tags are absent', () =>
+	{
+		expect(extractCameraInfo({} as Tags)).toEqual(
+			{
+				make: null,
+				model: null,
+				lensModel: null,
+				focalLengthIn35mmFormat: null,
+				focalLength: null,
+			},
+		);
 	});
 
-	it('treats empty strings and whitespace-only values as null', () => {
-		const tags = {Make: '   ', Model: '', LensModel: '   '} as unknown as Tags;
-		expect(extractCameraInfo(tags)).toEqual({
-			make: null,
-			model: null,
-			lensModel: null,
-			focalLengthIn35mmFormat: null,
-			focalLength: null,
-		});
+	it('treats empty strings and whitespace-only values as null', () =>
+	{
+		const tags =
+		{
+			Make: '   ',
+			Model: '',
+			LensModel: '   ',
+		} as unknown as Tags;
+		expect(extractCameraInfo(tags)).toEqual(
+			{
+				make: null,
+				model: null,
+				lensModel: null,
+				focalLengthIn35mmFormat: null,
+				focalLength: null,
+			},
+		);
 	});
 
-	it('extracts LensModel, FocalLengthIn35mmFormat, and physical FocalLength', () => {
-		const tags = {
+	it('extracts LensModel, FocalLengthIn35mmFormat, and physical FocalLength', () =>
+	{
+		const tags =
+		{
 			Make: 'Apple',
 			Model: 'iPhone 16 Pro',
 			LensModel: 'iPhone 16 Pro back camera 6.765mm f/1.78',
 			FocalLengthIn35mmFormat: '24 mm',
 			FocalLength: '6.765 mm',
 		} as unknown as Tags;
-		expect(extractCameraInfo(tags)).toEqual({
-			make: 'Apple',
-			model: 'iPhone 16 Pro',
-			lensModel: 'iPhone 16 Pro back camera 6.765mm f/1.78',
-			focalLengthIn35mmFormat: 24,
-			focalLength: 6.765,
-		});
+		expect(extractCameraInfo(tags)).toEqual(
+			{
+				make: 'Apple',
+				model: 'iPhone 16 Pro',
+				lensModel: 'iPhone 16 Pro back camera 6.765mm f/1.78',
+				focalLengthIn35mmFormat: 24,
+				focalLength: 6.765,
+			},
+		);
 	});
 
-	it('accepts a bare number for FocalLengthIn35mmFormat and FocalLength', () => {
-		const tags = {
+	it('accepts a bare number for FocalLengthIn35mmFormat and FocalLength', () =>
+	{
+		const tags =
+		{
 			Make: 'NIKON CORPORATION',
 			Model: 'D850',
 			LensModel: '50.0 mm f/1.4',
@@ -524,202 +662,318 @@ describe('extractCameraInfo', () => {
 		expect(info.focalLength).toBe(50);
 	});
 
-	it('preserves decimals on physical FocalLength (does not round)', () => {
-		const tags = {FocalLength: 15.7} as unknown as Tags;
+	it('preserves decimals on physical FocalLength (does not round)', () =>
+	{
+		const tags =
+		{
+			FocalLength: 15.7,
+		} as unknown as Tags;
 		expect(extractCameraInfo(tags).focalLength).toBe(15.7);
 	});
 });
 
-describe('formatCameraSuffix', () => {
-	const emptyLens = {lensModel: null, focalLengthIn35mmFormat: null, focalLength: null};
+describe('formatCameraSuffix', () =>
+{
+	const emptyLens =
+	{
+		lensModel: null,
+		focalLengthIn35mmFormat: null,
+		focalLength: null,
+	};
 
-	it('returns null when both make and model are null', () => {
-		expect(formatCameraSuffix({make: null, model: null, ...emptyLens})).toBeNull();
-	});
-
-	it('returns just the model when make is null', () => {
-		expect(formatCameraSuffix({make: null, model: 'iPhone 15 Pro', ...emptyLens})).toBe('iPhone 15 Pro');
-	});
-
-	it('returns just the make when model is null', () => {
-		expect(formatCameraSuffix({make: 'Canon', model: null, ...emptyLens})).toBe('Canon');
-	});
-
-	it('combines make and model as "Make Model"', () => {
-		expect(formatCameraSuffix({make: 'Apple', model: 'iPhone 15 Pro', ...emptyLens})).toBe('Apple iPhone 15 Pro');
-	});
-
-	it('drops the make when the model already starts with it (e.g. Canon Canon EOS 5D)', () => {
-		expect(formatCameraSuffix({make: 'Canon', model: 'Canon EOS 5D Mark IV', ...emptyLens})).toBe(
-			'Canon EOS 5D Mark IV',
-		);
-	});
-
-	it('strips a "CORPORATION" suffix from the make (e.g. NIKON CORPORATION D850)', () => {
-		expect(formatCameraSuffix({make: 'NIKON CORPORATION', model: 'D850', ...emptyLens})).toBe('NIKON D850');
-	});
-});
-
-describe('formatImessageCameraSuffix', () => {
-	const emptyLens = {lensModel: null, focalLengthIn35mmFormat: null, focalLength: null};
-
-	it('labels a 5x tele iPhone (16 Pro Max, FocalLength 15.7) as "5x" instead of cropped 405mm', () => {
+	it('returns null when both make and model are null', () =>
+	{
 		expect(
-			formatImessageCameraSuffix({
-				make: 'Apple',
-				model: 'iPhone 16 Pro Max',
-				lensModel: 'iPhone 16 Pro Max back camera 15.7mm f/2.8',
-				focalLengthIn35mmFormat: 405,
-				focalLength: 15.7,
-			}),
-		).toBe('iPhone 16 Pro Max 5x');
+			formatCameraSuffix(
+				{
+					make: null,
+					model: null,
+					...emptyLens,
+				},
+			),
+		).toBeNull();
 	});
 
-	it('labels a 1x main iPhone lens (16 Pro, FocalLength 6.765, 35mm 24) as "1x"', () => {
+	it('returns just the model when make is null', () =>
+	{
 		expect(
-			formatImessageCameraSuffix({
-				make: 'Apple',
-				model: 'iPhone 16 Pro',
-				lensModel: 'iPhone 16 Pro back camera 6.765mm f/1.78',
-				focalLengthIn35mmFormat: 24,
-				focalLength: 6.765,
-			}),
-		).toBe('iPhone 16 Pro 1x');
+			formatCameraSuffix(
+				{
+					make: null,
+					model: 'iPhone 15 Pro',
+					...emptyLens,
+				},
+			),
+		).toBe('iPhone 15 Pro');
 	});
 
-	it('labels a 2x tele iPhone (13 Pro, FocalLength 6, 35mm 52) as "2x"', () => {
+	it('returns just the make when model is null', () =>
+	{
 		expect(
-			formatImessageCameraSuffix({
-				make: 'Apple',
-				model: 'iPhone 13 Pro',
-				lensModel: 'iPhone 13 Pro back camera 6mm f/2.8',
-				focalLengthIn35mmFormat: 52,
-				focalLength: 6,
-			}),
-		).toBe('iPhone 13 Pro 2x');
+			formatCameraSuffix(
+				{
+					make: 'Canon',
+					model: null,
+					...emptyLens,
+				},
+			),
+		).toBe('Canon');
 	});
 
-	it('labels a front-camera iPhone as "front" purely from the LensModel token', () => {
+	it('combines make and model as "Make Model"', () =>
+	{
 		expect(
-			formatImessageCameraSuffix({
-				make: 'Apple',
-				model: 'iPhone 13 Pro',
-				lensModel: 'iPhone 13 Pro front camera 2.71mm f/2.2',
-				focalLengthIn35mmFormat: 23,
-				focalLength: 2.71,
-			}),
-		).toBe('iPhone 13 Pro front');
+			formatCameraSuffix(
+				{
+					make: 'Apple',
+					model: 'iPhone 15 Pro',
+					...emptyLens,
+				},
+			),
+		).toBe('Apple iPhone 15 Pro');
 	});
 
-	it('labels an older iPhone (iPhone 6, FocalLength 4.15, 35mm 29) as "1x"', () => {
+	it('drops the make when the model already starts with it (e.g. Canon Canon EOS 5D)', () =>
+	{
 		expect(
-			formatImessageCameraSuffix({
-				make: 'Apple',
-				model: 'iPhone 6',
-				lensModel: 'iPhone 6 back camera 4.15mm f/2.2',
-				focalLengthIn35mmFormat: 29,
-				focalLength: 4.15,
-			}),
-		).toBe('iPhone 6 1x');
-	});
-
-	it('labels a 0.5x ultrawide iPhone (FocalLength 2.22) as "0.5x"', () => {
-		expect(
-			formatImessageCameraSuffix({
-				make: 'Apple',
-				model: 'iPhone X',
-				lensModel: 'iPhone X back camera 2.22mm f/2.4',
-				focalLengthIn35mmFormat: 13,
-				focalLength: 2.22,
-			}),
-		).toBe('iPhone X 0.5x');
-	});
-
-	it('labels a 3x tele iPhone (FocalLength 9, 35mm 77) as "3x"', () => {
-		expect(
-			formatImessageCameraSuffix({
-				make: 'Apple',
-				model: 'iPhone 14 Pro',
-				lensModel: 'iPhone 14 Pro back camera 9mm f/2.8',
-				focalLengthIn35mmFormat: 77,
-				focalLength: 9,
-			}),
-		).toBe('iPhone 14 Pro 3x');
-	});
-
-	it('drops the lens label on an iPhone with no FocalLength (e.g. videos)', () => {
-		expect(
-			formatImessageCameraSuffix({
-				make: 'Apple',
-				model: 'iPhone X',
-				lensModel: null,
-				focalLengthIn35mmFormat: null,
-				focalLength: null,
-			}),
-		).toBe('iPhone X');
-	});
-
-	it('falls back to bare "<N>mm" for an unknown iPhone wide-range crop (FocalLength 5, 35mm 80)', () => {
-		expect(
-			formatImessageCameraSuffix({
-				make: 'Apple',
-				model: 'iPhone X',
-				lensModel: 'iPhone X back camera 5mm f/2.4',
-				focalLengthIn35mmFormat: 80,
-				focalLength: 5,
-			}),
-		).toBe('iPhone X 80mm');
-	});
-
-	it('formats a Nikon D850 with a 50mm f/1.4 lens', () => {
-		expect(
-			formatImessageCameraSuffix({
-				make: 'Nikon',
-				model: 'D850',
-				lensModel: '50.0 mm f/1.4',
-				focalLengthIn35mmFormat: 50,
-				focalLength: 50,
-			}),
-		).toBe('Nikon D850, 50mm f1.4');
-	});
-
-	it('title-cases an all-caps Make like "NIKON CORPORATION"', () => {
-		expect(
-			formatImessageCameraSuffix({
-				make: 'NIKON CORPORATION',
-				model: 'D850',
-				lensModel: '50.0 mm f/1.4',
-				focalLengthIn35mmFormat: 50,
-				focalLength: 50,
-			}),
-		).toBe('Nikon D850, 50mm f1.4');
-	});
-
-	it('handles a Samsung SM-G935V with no lens info', () => {
-		expect(
-			formatImessageCameraSuffix({
-				make: 'SAMSUNG',
-				model: 'SM-G935V',
-				lensModel: null,
-				focalLengthIn35mmFormat: null,
-				focalLength: null,
-			}),
-		).toBe('Samsung SM-G935V');
-	});
-
-	it('returns just "<Make> <Model>" for a Canon body with no LensModel', () => {
-		expect(
-			formatImessageCameraSuffix({
-				make: 'Canon',
-				model: 'EOS 5D Mark IV',
-				lensModel: null,
-				focalLengthIn35mmFormat: 50,
-				focalLength: 50,
-			}),
+			formatCameraSuffix(
+				{
+					make: 'Canon',
+					model: 'Canon EOS 5D Mark IV',
+					...emptyLens,
+				},
+			),
 		).toBe('Canon EOS 5D Mark IV');
 	});
 
-	it('returns null when there is no camera info at all', () => {
-		expect(formatImessageCameraSuffix({make: null, model: null, ...emptyLens})).toBeNull();
+	it('strips a "CORPORATION" suffix from the make (e.g. NIKON CORPORATION D850)', () =>
+	{
+		expect(
+			formatCameraSuffix(
+				{
+					make: 'NIKON CORPORATION',
+					model: 'D850',
+					...emptyLens,
+				},
+			),
+		).toBe('NIKON D850');
+	});
+});
+
+describe('formatImessageCameraSuffix', () =>
+{
+	const emptyLens =
+	{
+		lensModel: null,
+		focalLengthIn35mmFormat: null,
+		focalLength: null,
+	};
+
+	it('labels a 5x tele iPhone (16 Pro Max, FocalLength 15.7) as "5x" instead of cropped 405mm', () =>
+	{
+		expect(
+			formatImessageCameraSuffix(
+				{
+					make: 'Apple',
+					model: 'iPhone 16 Pro Max',
+					lensModel: 'iPhone 16 Pro Max back camera 15.7mm f/2.8',
+					focalLengthIn35mmFormat: 405,
+					focalLength: 15.7,
+				},
+			),
+		).toBe('iPhone 16 Pro Max 5x');
+	});
+
+	it('labels a 1x main iPhone lens (16 Pro, FocalLength 6.765, 35mm 24) as "1x"', () =>
+	{
+		expect(
+			formatImessageCameraSuffix(
+				{
+					make: 'Apple',
+					model: 'iPhone 16 Pro',
+					lensModel: 'iPhone 16 Pro back camera 6.765mm f/1.78',
+					focalLengthIn35mmFormat: 24,
+					focalLength: 6.765,
+				},
+			),
+		).toBe('iPhone 16 Pro 1x');
+	});
+
+	it('labels a 2x tele iPhone (13 Pro, FocalLength 6, 35mm 52) as "2x"', () =>
+	{
+		expect(
+			formatImessageCameraSuffix(
+				{
+					make: 'Apple',
+					model: 'iPhone 13 Pro',
+					lensModel: 'iPhone 13 Pro back camera 6mm f/2.8',
+					focalLengthIn35mmFormat: 52,
+					focalLength: 6,
+				},
+			),
+		).toBe('iPhone 13 Pro 2x');
+	});
+
+	it('labels a front-camera iPhone as "front" purely from the LensModel token', () =>
+	{
+		expect(
+			formatImessageCameraSuffix(
+				{
+					make: 'Apple',
+					model: 'iPhone 13 Pro',
+					lensModel: 'iPhone 13 Pro front camera 2.71mm f/2.2',
+					focalLengthIn35mmFormat: 23,
+					focalLength: 2.71,
+				},
+			),
+		).toBe('iPhone 13 Pro front');
+	});
+
+	it('labels an older iPhone (iPhone 6, FocalLength 4.15, 35mm 29) as "1x"', () =>
+	{
+		expect(
+			formatImessageCameraSuffix(
+				{
+					make: 'Apple',
+					model: 'iPhone 6',
+					lensModel: 'iPhone 6 back camera 4.15mm f/2.2',
+					focalLengthIn35mmFormat: 29,
+					focalLength: 4.15,
+				},
+			),
+		).toBe('iPhone 6 1x');
+	});
+
+	it('labels a 0.5x ultrawide iPhone (FocalLength 2.22) as "0.5x"', () =>
+	{
+		expect(
+			formatImessageCameraSuffix(
+				{
+					make: 'Apple',
+					model: 'iPhone X',
+					lensModel: 'iPhone X back camera 2.22mm f/2.4',
+					focalLengthIn35mmFormat: 13,
+					focalLength: 2.22,
+				},
+			),
+		).toBe('iPhone X 0.5x');
+	});
+
+	it('labels a 3x tele iPhone (FocalLength 9, 35mm 77) as "3x"', () =>
+	{
+		expect(
+			formatImessageCameraSuffix(
+				{
+					make: 'Apple',
+					model: 'iPhone 14 Pro',
+					lensModel: 'iPhone 14 Pro back camera 9mm f/2.8',
+					focalLengthIn35mmFormat: 77,
+					focalLength: 9,
+				},
+			),
+		).toBe('iPhone 14 Pro 3x');
+	});
+
+	it('drops the lens label on an iPhone with no FocalLength (e.g. videos)', () =>
+	{
+		expect(
+			formatImessageCameraSuffix(
+				{
+					make: 'Apple',
+					model: 'iPhone X',
+					lensModel: null,
+					focalLengthIn35mmFormat: null,
+					focalLength: null,
+				},
+			),
+		).toBe('iPhone X');
+	});
+
+	it('falls back to bare "<N>mm" for an unknown iPhone wide-range crop (FocalLength 5, 35mm 80)', () =>
+	{
+		expect(
+			formatImessageCameraSuffix(
+				{
+					make: 'Apple',
+					model: 'iPhone X',
+					lensModel: 'iPhone X back camera 5mm f/2.4',
+					focalLengthIn35mmFormat: 80,
+					focalLength: 5,
+				},
+			),
+		).toBe('iPhone X 80mm');
+	});
+
+	it('formats a Nikon D850 with a 50mm f/1.4 lens', () =>
+	{
+		expect(
+			formatImessageCameraSuffix(
+				{
+					make: 'Nikon',
+					model: 'D850',
+					lensModel: '50.0 mm f/1.4',
+					focalLengthIn35mmFormat: 50,
+					focalLength: 50,
+				},
+			),
+		).toBe('Nikon D850, 50mm f1.4');
+	});
+
+	it('title-cases an all-caps Make like "NIKON CORPORATION"', () =>
+	{
+		expect(
+			formatImessageCameraSuffix(
+				{
+					make: 'NIKON CORPORATION',
+					model: 'D850',
+					lensModel: '50.0 mm f/1.4',
+					focalLengthIn35mmFormat: 50,
+					focalLength: 50,
+				},
+			),
+		).toBe('Nikon D850, 50mm f1.4');
+	});
+
+	it('handles a Samsung SM-G935V with no lens info', () =>
+	{
+		expect(
+			formatImessageCameraSuffix(
+				{
+					make: 'SAMSUNG',
+					model: 'SM-G935V',
+					lensModel: null,
+					focalLengthIn35mmFormat: null,
+					focalLength: null,
+				},
+			),
+		).toBe('Samsung SM-G935V');
+	});
+
+	it('returns just "<Make> <Model>" for a Canon body with no LensModel', () =>
+	{
+		expect(
+			formatImessageCameraSuffix(
+				{
+					make: 'Canon',
+					model: 'EOS 5D Mark IV',
+					lensModel: null,
+					focalLengthIn35mmFormat: 50,
+					focalLength: 50,
+				},
+			),
+		).toBe('Canon EOS 5D Mark IV');
+	});
+
+	it('returns null when there is no camera info at all', () =>
+	{
+		expect(
+			formatImessageCameraSuffix(
+				{
+					make: null,
+					model: null,
+					...emptyLens,
+				},
+			),
+		).toBeNull();
 	});
 });

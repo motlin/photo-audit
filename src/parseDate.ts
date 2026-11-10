@@ -15,43 +15,62 @@ const COMPACT = /(?<!\d)(\d{4})(\d{2})(\d{2})(?:[ _T.-]?(\d{2})(\d{2})(\d{2}))?(
 /** Month-precision `YYYY-MM` (e.g. a "2022-06 Nadia Shoot" folder, or `2008-05-019.jpg` where 019 is a serial index). */
 const YEAR_MONTH = /(?<!\d)(\d{4})-(\d{2})(?!-?\d{4})/g;
 
-function isValid(date: DateParts): boolean {
-	if (date.year < MIN_YEAR || date.year > MAX_YEAR) {
+function isValid(date: DateParts): boolean
+{
+	if (date.year < MIN_YEAR || date.year > MAX_YEAR)
+	{
 		return false;
 	}
-	if (date.month < 1 || date.month > 12) {
+	if (date.month < 1 || date.month > 12)
+	{
 		return false;
 	}
-	if (date.day !== null && (date.day < 1 || date.day > 31)) {
+	if (date.day !== null && (date.day < 1 || date.day > 31))
+	{
 		return false;
 	}
-	if (date.time !== null) {
+	if (date.time !== null)
+	{
 		const {hour, minute, second} = date.time;
-		if (hour > 23 || minute > 59 || second > 59) {
+		if (hour > 23 || minute > 59 || second > 59)
+		{
 			return false;
 		}
 	}
 	return true;
 }
 
-function buildWithOptionalTime(match: RegExpMatchArray, day: number | null): DateParts {
+function buildWithOptionalTime(match: RegExpMatchArray, day: number | null): DateParts
+{
 	const [, year, month, , hour, minute, second, millisecond] = match;
 	const time =
 		hour !== undefined && minute !== undefined && second !== undefined
-			? {
+			?
+				{
 					hour: Number(hour),
 					minute: Number(minute),
 					second: Number(second),
-					...(millisecond !== undefined && {millisecond: Number(millisecond)}),
+					...(millisecond !== undefined &&
+					{
+						millisecond: Number(millisecond),
+					}),
 				}
 			: null;
-	return {year: Number(year), month: Number(month), day, time};
+	return {
+		year: Number(year),
+		month: Number(month),
+		day,
+		time,
+	};
 }
 
-function firstValid(input: string, pattern: RegExp, build: (match: RegExpMatchArray) => DateParts): DateParts | null {
-	for (const match of input.matchAll(pattern)) {
+function firstValid(input: string, pattern: RegExp, build: (match: RegExpMatchArray) => DateParts): DateParts | null
+{
+	for (const match of input.matchAll(pattern))
+	{
 		const date = build(match);
-		if (isValid(date)) {
+		if (isValid(date))
+		{
 			return date;
 		}
 	}
@@ -65,11 +84,13 @@ function firstValid(input: string, pattern: RegExp, build: (match: RegExpMatchAr
  * `YYYY-MM`. Returns null when nothing date-like is found, deliberately
  * ignoring year ranges ("2005-2013") and bare years.
  */
-export function parseDateFromString(input: string): DateParts | null {
+export function parseDateFromString(input: string): DateParts | null
+{
 	return (
 		firstValid(input, ISO_DATE, (m) => buildWithOptionalTime(m, Number(m[3]))) ??
 		firstValid(input, COMPACT, (m) => buildWithOptionalTime(m, Number(m[3]))) ??
-		firstValid(input, YEAR_MONTH, (m) => ({
+		firstValid(input, YEAR_MONTH, (m) => (
+		{
 			year: Number(m[1]),
 			month: Number(m[2]),
 			day: null,

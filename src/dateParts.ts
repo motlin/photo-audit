@@ -7,31 +7,43 @@
  * (e.g. `SubSecDateTimeOriginal`); used to keep burst-mode frames distinct
  * when generating proposed filenames.
  */
-export interface DateParts {
+export interface DateParts
+{
 	year: number;
 	month: number;
 	day: number | null;
-	time: {hour: number; minute: number; second: number; millisecond?: number} | null;
+	time:
+	{
+		hour: number;
+		minute: number;
+		second: number;
+		millisecond?: number;
+	} | null;
 }
 
 /** Compare two dates at the coarsest precision they share. */
-export function datesAgree(a: DateParts, b: DateParts): boolean {
-	if (a.year !== b.year || a.month !== b.month) {
+export function datesAgree(a: DateParts, b: DateParts): boolean
+{
+	if (a.year !== b.year || a.month !== b.month)
+	{
 		return false;
 	}
-	if (a.day === null || b.day === null) {
+	if (a.day === null || b.day === null)
+	{
 		return true;
 	}
 	return a.day === b.day;
 }
 
-export function formatDate(date: DateParts): string {
+export function formatDate(date: DateParts): string
+{
 	const pad = (n: number, width = 2) => String(n).padStart(width, '0');
 	const ymd =
 		date.day === null
 			? `${pad(date.year, 4)}-${pad(date.month)}`
 			: `${pad(date.year, 4)}-${pad(date.month)}-${pad(date.day)}`;
-	if (date.time === null) {
+	if (date.time === null)
+	{
 		return ymd;
 	}
 	const {hour, minute, second, millisecond} = date.time;

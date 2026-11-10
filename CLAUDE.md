@@ -24,3 +24,7 @@ problems. The entry point is `src/cli.ts`; run it during development with
 Build with red/green TDD. The core (`parseDate`, `classify`, `folderDateFor`)
 is pure and unit-tested; exiftool and filesystem access stay in thin outer
 layers (`metadata`, `walk`, `cli`).
+
+## Formatting
+
+Formatting uses [oxfmt-next-line](https://www.npmjs.com/package/oxfmt-next-line), a fork of oxfmt that puts opening braces on their own line. mise installs it, and it reads `.oxfmtrc.json`. Run `just format` or `oxfmt-next-line`, not `vp fmt`: Vite+'s bundled oxfmt does not support next-line braces, so `vite.config.ts` has no `fmt` block and `just check` runs `vp check --no-fmt`, which lints and type-checks without formatting. The pre-commit `oxfmt` hook enforces formatting in CI.
